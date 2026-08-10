@@ -72,7 +72,7 @@ function ensureLocalEnv() {
       `AUTH_SECRET=${authSecret}`,
     )
     .replace(
-      "CRON_SECRET=replace-with-at-least-16-random-characters",
+      "CRON_SECRET=replace-with-at-least-32-random-characters",
       `CRON_SECRET=${cronSecret}`,
     );
   writeFileSync(envFile, contents, { encoding: "utf8", mode: 0o600 });
@@ -268,7 +268,7 @@ Commands:
   cron-catalog   Trigger catalog synchronization through the local API
   cron-scan      Trigger a due-watch scan through the local API
   check          Run formatting, lint, types, and unit tests
-  check-all      Run check, production build, and browser tests`);
+  check-all      Run all checks, build, integration, and browser tests`);
 }
 
 try {
@@ -362,9 +362,10 @@ try {
         "format:check",
         "docs:check",
         "lint",
-        "typecheck",
         "test",
         "build",
+        "typecheck",
+        "test:integration",
         "test:e2e",
       ]) {
         run(pnpm, [script]);

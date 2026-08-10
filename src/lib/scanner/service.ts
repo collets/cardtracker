@@ -19,6 +19,12 @@ import {
   queueTelegramDelivery,
 } from "@/lib/telegram/service";
 
+export interface MarketplaceProductClient {
+  marketplaceProducts(
+    blueprintId: number,
+  ): Promise<Awaited<ReturnType<CardTraderClient["marketplaceProducts"]>>>;
+}
+
 function hourBucket(date: Date) {
   const value = new Date(date);
   value.setUTCMinutes(0, 0, 0);
@@ -33,6 +39,7 @@ function safeError(error: unknown) {
 
 export async function claimDueBlueprints(
   limit = getServerEnv().SCAN_BATCH_SIZE,
+  onlyBlueprintId?: number,
 ): Promise<number[]> {
   const rows = await getSql()<Array<{ blueprint_id: number }>>`
     with candidates as (
@@ -40,6 +47,7 @@ export async function claimDueBlueprints(
       from blueprint_scan_state state
       where state.next_scan_at <= now()
         and (state.lease_until is null or state.lease_until < now())
+        and (${onlyBlueprintId ?? null}::integer is null or state.blueprint_id = ${onlyBlueprintId ?? null})
         and exists (
           select 1 from watches watch
           where watch.blueprint_id = state.blueprint_id and watch.active = true
@@ -59,7 +67,7 @@ export async function claimDueBlueprints(
 
 export async function scanBlueprint(
   blueprintId: number,
-  client = new CardTraderClient(),
+  client: MarketplaceProductClient = new CardTraderClient(),
 ): Promise<{ watches: number; alerts: number }> {
   try {
     const [listings, watchRows] = await Promise.all([
@@ -291,7 +299,11 @@ export async function scanBlueprint(
 }
 
 export async function runMarketScanner(
-  options: { explicitBlueprintId?: number } = {},
+  options: {
+    explicitBlueprintId?: number;
+    client?: MarketplaceProductClient;
+    dispatchNotifications?: () => Promise<{ sent: number; failed: number }>;
+  } = {},
 ) {
   const [run] = await getDb()
     .insert(scanRuns)
@@ -305,7 +317,7 @@ export async function runMarketScanner(
   let failures = 0;
   let watchCount = 0;
   let alertCount = 0;
-  const client = new CardTraderClient();
+  const client = options.client ?? new CardTraderClient();
 
   for (let index = 0; index < blueprintIds.length; index += 5) {
     const batch = blueprintIds.slice(index, index + 5);
@@ -339,7 +351,7 @@ export async function runMarketScanner(
     })
     .where(eq(scanRuns.id, run.id));
 
-  await dispatchPendingNotifications();
+  await (options.dispatchNotifications ?? dispatchPendingNotifications)();
   return {
     claimed: blueprintIds.length,
     successes,
@@ -349,20 +361,38 @@ export async function runMarketScanner(
   };
 }
 
-export async function pruneOperationalData() {
+export async function pruneOperationalData(
+  scope: {
+    watchIds?: string[];
+    notificationAlertIds?: string[];
+    telegramTokenUserIds?: string[];
+  } = {},
+) {
   const historyCutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   const tokenCutoff = new Date();
   await getDb()
     .delete(priceObservations)
-    .where(lt(priceObservations.bucketAt, historyCutoff));
+    .where(
+      and(
+        lt(priceObservations.bucketAt, historyCutoff),
+        scope.watchIds?.length
+          ? inArray(priceObservations.watchId, scope.watchIds)
+          : undefined,
+      ),
+    );
   const { telegramLinkTokens, notificationDeliveries } =
     await import("@/db/schema");
   await getDb()
     .delete(telegramLinkTokens)
     .where(
-      or(
-        lt(telegramLinkTokens.expiresAt, tokenCutoff),
-        sql`${telegramLinkTokens.usedAt} is not null`,
+      and(
+        or(
+          lt(telegramLinkTokens.expiresAt, tokenCutoff),
+          sql`${telegramLinkTokens.usedAt} is not null`,
+        ),
+        scope.telegramTokenUserIds?.length
+          ? inArray(telegramLinkTokens.userId, scope.telegramTokenUserIds)
+          : undefined,
       ),
     );
   await getDb()
@@ -371,6 +401,9 @@ export async function pruneOperationalData() {
       and(
         lt(notificationDeliveries.createdAt, historyCutoff),
         inArray(notificationDeliveries.status, ["sent", "failed"]),
+        scope.notificationAlertIds?.length
+          ? inArray(notificationDeliveries.alertId, scope.notificationAlertIds)
+          : undefined,
       ),
     );
 }

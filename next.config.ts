@@ -7,7 +7,7 @@ const nextConfig: NextConfig = {
     root: process.cwd(),
   },
   experimental: {
-    useTypeScriptCli: true,
+    useTypeScriptCli: false,
   },
   images: {
     remotePatterns: [
