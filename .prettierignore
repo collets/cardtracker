@@ -1,0 +1,7 @@
+.next
+node_modules
+coverage
+playwright-report
+pnpm-lock.yaml
+card_trader_postman_collection.json
+src/app/globals.css

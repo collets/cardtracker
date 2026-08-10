@@ -1,0 +1,4 @@
+interface:
+  display_name: "Riftwatch Development"
+  short_description: "Develop and operate the Riftwatch local stack"
+  default_prompt: "Use $riftwatch-development to set up, modify, and verify the Riftwatch application safely."

@@ -1,0 +1,28 @@
+# dependencies and builds
+node_modules/
+.next/
+out/
+coverage/
+playwright-report/
+test-results/
+*.tsbuildinfo
+
+# environment and local data
+.env
+.env.local
+.env.*.local
+!.env.example
+*.db
+*.db-shm
+*.db-wal
+
+# editor and OS
+.DS_Store
+.idea/
+.vscode/
+
+# generated database migrations stay tracked; local metadata does not
+.drizzle/
+
+# The downloaded collection contains an embedded credential. Keep the raw file local.
+card_trader_postman_collection.json
