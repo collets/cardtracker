@@ -16,6 +16,7 @@ database work, local integrations, testing, and troubleshooting.
 - [Telegram development](#telegram-development)
 - [Database development](#database-development)
 - [Testing and builds](#testing-and-builds)
+- [Production-readiness tools](#production-readiness-tools)
 - [Troubleshooting](#troubleshooting)
 
 ## Local architecture
@@ -141,15 +142,19 @@ pnpm local:down
 
 ### Data and integrations
 
-| Command             | Behavior                                               |
-| ------------------- | ------------------------------------------------------ |
-| `pnpm db:generate`  | Generate a migration from schema changes               |
-| `pnpm db:migrate`   | Apply pending committed migrations                     |
-| `pnpm db:seed`      | Idempotently seed/update the development administrator |
-| `pnpm db:studio`    | Open Drizzle Studio                                    |
-| `pnpm db:shell`     | Open `psql` inside the PostgreSQL container            |
-| `pnpm cron:catalog` | Call the authenticated local catalog cron endpoint     |
-| `pnpm cron:scan`    | Call the authenticated local market scanner endpoint   |
+| Command                                          | Behavior                                                       |
+| ------------------------------------------------ | -------------------------------------------------------------- |
+| `pnpm db:generate`                               | Generate a migration from schema changes                       |
+| `pnpm db:migrate`                                | Apply pending committed migrations                             |
+| `pnpm db:seed`                                   | Idempotently seed/update the development administrator         |
+| `pnpm db:studio`                                 | Open Drizzle Studio                                            |
+| `pnpm db:shell`                                  | Open `psql` inside the PostgreSQL container                    |
+| `pnpm cron:catalog`                              | Call the authenticated local catalog cron endpoint             |
+| `pnpm cron:scan`                                 | Call the authenticated local market scanner endpoint           |
+| `pnpm market:calibrate`                          | Produce aggregate signal statistics from a bounded live sample |
+| `pnpm telegram:webhook:set -- --url <https-url>` | Register the configured bot webhook                            |
+| `pnpm telegram:webhook:status`                   | Inspect sanitized Telegram webhook status                      |
+| `pnpm telegram:webhook:delete`                   | Remove the configured bot webhook                              |
 
 The cron helpers require a running Next.js server because they exercise the same
 HTTP boundary used by Vercel. They read `CRON_SECRET` internally and never print
@@ -157,19 +162,20 @@ it. Catalog and scan commands also require `CARD_TRADER_AUTH_TOKEN`.
 
 ### Quality
 
-| Command             | Behavior                                                 |
-| ------------------- | -------------------------------------------------------- |
-| `pnpm format`       | Apply Prettier formatting                                |
-| `pnpm format:check` | Verify formatting without changing files                 |
-| `pnpm lint`         | Run ESLint                                               |
-| `pnpm typecheck`    | Run TypeScript 6 in strict no-emit mode                  |
-| `pnpm test`         | Run Vitest once                                          |
-| `pnpm test:watch`   | Run Vitest in watch mode                                 |
-| `pnpm test:e2e`     | Run Playwright browser tests                             |
-| `pnpm build`        | Compile Tailwind and create a Turbopack production build |
-| `pnpm docs:check`   | Validate local Markdown links and documented commands    |
-| `pnpm check`        | Formatting, lint, typecheck, and unit tests              |
-| `pnpm check:all`    | `check` plus build and browser tests                     |
+| Command                 | Behavior                                                 |
+| ----------------------- | -------------------------------------------------------- |
+| `pnpm format`           | Apply Prettier formatting                                |
+| `pnpm format:check`     | Verify formatting without changing files                 |
+| `pnpm lint`             | Run ESLint                                               |
+| `pnpm typecheck`        | Run TypeScript 6 in strict no-emit mode                  |
+| `pnpm test`             | Run Vitest once                                          |
+| `pnpm test:integration` | Run local PostgreSQL scanner/delivery integration tests  |
+| `pnpm test:watch`       | Run Vitest in watch mode                                 |
+| `pnpm test:e2e`         | Run Playwright browser tests                             |
+| `pnpm build`            | Compile Tailwind and create a Turbopack production build |
+| `pnpm docs:check`       | Validate local Markdown links and documented commands    |
+| `pnpm check`            | Formatting, lint, typecheck, and unit tests              |
+| `pnpm check:all`        | All checks, build, integration tests, and browser tests  |
 
 ## Environment variables
 
@@ -186,13 +192,13 @@ server. `NEXT_PUBLIC_` values are embedded into browser output at build time.
 | `NEXT_PUBLIC_APP_URL`      | Required; defaults to `http://localhost:3000` | Canonical app URL and local cron target                   |
 | `DATABASE_URL`             | Required                                      | Runtime pooled PostgreSQL connection                      |
 | `DATABASE_URL_DIRECT`      | Recommended                                   | Direct connection for migration tooling                   |
-| `AUTH_SECRET`              | Required, 16+ characters                      | Auth.js signing/encryption secret; generated by setup     |
+| `AUTH_SECRET`              | Required, 16+ locally; 32+ in production      | Auth.js signing/encryption secret; generated by setup     |
 | `AUTH_GOOGLE_ID`           | Optional locally                              | Google OAuth client ID                                    |
 | `AUTH_GOOGLE_SECRET`       | Optional locally                              | Google OAuth client secret                                |
 | `AUTH_ENABLE_DEV_PROVIDER` | `true` locally only                           | Enables email-based development sign-in                   |
 | `ADMIN_EMAIL`              | Required for seed                             | Bootstrap administrator and development login             |
 | `CARD_TRADER_AUTH_TOKEN`   | Required for catalog/scans                    | Server-only CardTrader bearer credential                  |
-| `CRON_SECRET`              | Required, 16+ characters                      | Authenticates catalog and scan routes; generated by setup |
+| `CRON_SECRET`              | Required, 16+ locally; 32+ in production      | Authenticates catalog and scan routes; generated by setup |
 | `TELEGRAM_BOT_TOKEN`       | Optional                                      | Telegram Bot API credential                               |
 | `TELEGRAM_BOT_USERNAME`    | Optional                                      | Bot username used in connection links                     |
 | `TELEGRAM_WEBHOOK_SECRET`  | Optional                                      | Verifies Telegram webhook requests                        |
@@ -255,6 +261,14 @@ Telegram is optional for normal UI work. To test it end to end:
    webhook secret as Telegram's secret-token header.
 5. Use Settings in Riftwatch to generate a one-time bot link.
 
+For a hosted HTTPS endpoint, register and inspect the webhook without placing the
+bot token in a command or URL:
+
+```sh
+pnpm telegram:webhook:set -- --url https://your-deployment.example
+pnpm telegram:webhook:status
+```
+
 Do not commit tunnel URLs or bot credentials. Linking tokens are hashed, expire
 after ten minutes, and can be used once.
 
@@ -269,6 +283,11 @@ The Drizzle schema is in `src/db/schema.ts`; generated SQL and snapshots are in
 4. Run `pnpm db:migrate` against the local database.
 5. Exercise the affected UI/API path and run the relevant tests.
 6. Commit the schema, SQL migration, and Drizzle metadata together.
+
+`pnpm db:migrate` prefers `DATABASE_URL_DIRECT` and falls back to
+`DATABASE_URL`. Runtime application queries always use `DATABASE_URL`. In a
+serverless deployment, use a transaction pooler for runtime traffic and a direct
+or session connection for the migration command.
 
 Do not modify a migration that may already have been applied by another
 developer or environment; create a follow-up migration. Do not use destructive
@@ -289,6 +308,12 @@ Run the fast pre-commit suite with `pnpm check`. Use `pnpm check:all` before a P
 that changes routing, authentication, infrastructure, build behavior, or major UI
 flows.
 
+The project keeps TypeScript 6 and asks Next.js to use TypeScript's JavaScript
+compiler API during `next build` (`experimental.useTypeScriptCli: false`). This
+is the documented Next.js 16 path for TypeScript 6 and avoids the CLI
+`--showConfig` parser used for TypeScript 7. Turbopack remains the development
+and production bundler; there is no webpack fallback.
+
 Playwright downloads its own browser in CI. Locally, if the bundled browser is
 unavailable, point it to an installed Chrome-compatible binary:
 
@@ -298,7 +323,42 @@ PLAYWRIGHT_CHROME_PATH=/usr/bin/google-chrome pnpm test:e2e
 
 The Playwright server uses `pnpm dev:app` with isolated fallback values, so it
 does not start or reset Docker. CI starts PostgreSQL, migrates, and seeds before
-browser tests.
+browser tests. Playwright seeds deterministic admin, user, catalog, watch, and
+alert fixtures and removes them afterward. Both Playwright and integration
+fixtures refuse non-loopback database URLs.
+
+`pnpm test:integration` exercises scanner leases, evidence persistence, alert
+lifecycle, Telegram delivery idempotency, failures, and pruning against local
+PostgreSQL. Keep Docker running before invoking it.
+
+## Production-readiness tools
+
+These commands prepare and verify a deployment but do not replace the operator
+checklist in [Production rollout](PRODUCTION_ROLLOUT.md):
+
+| Command                                          | Behavior                                                                                    |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------- |
+| `pnpm prod:check-env`                            | Validate required runtime production values and paired integrations without printing values |
+| `pnpm prod:check-env -- --require-direct`        | Also require the hosted migration connection                                                |
+| `pnpm ops:status`                                | Report aggregate local capacity, stale work, and failures                                   |
+| `pnpm ops:status -- --allow-hosted`              | Explicitly permit the same read-only report against a hosted database                       |
+| `pnpm smoke:hosted -- --url <url>`               | Check health, public pages, auth redirect, and unauthorized cron boundaries                 |
+| `pnpm smoke:hosted -- --url <url> --run-catalog` | Explicitly run the authenticated catalog job                                                |
+| `pnpm smoke:hosted -- --url <url> --run-scan`    | Explicitly run the authenticated market job                                                 |
+
+The two `--run-*` flags mutate hosted state and make external CardTrader calls.
+Never use them merely to see whether a URL is reachable. The safe smoke command
+does not send `CRON_SECRET`.
+
+For bounded marketplace research after catalog synchronization:
+
+```sh
+pnpm market:calibrate -- --expansion Vendetta --sample-size 30
+```
+
+The command selects a deterministic rarity-stratified sample, starts no more
+than five requests per second, and emits aggregate Markdown. It does not write
+raw responses or change configured deal thresholds.
 
 ## Troubleshooting
 

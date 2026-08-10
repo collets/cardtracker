@@ -28,6 +28,11 @@ Work from the repository root and preserve unrelated developer changes.
   the authenticated local cron helper while the app is running.
 - For pricing work, preserve integer cents/basis points and add focused tests to
   the pure deal evaluator.
+- For integration work, use `pnpm test:integration`; its fixtures must retain the
+  non-loopback database guard and deterministic cleanup.
+- For deployment preparation, use `pnpm prod:check-env`, `pnpm ops:status`, and
+  `pnpm smoke:hosted`. Do not add an authorized hosted flag or Telegram webhook
+  mutation unless the operator explicitly authorizes that environment.
 - For route handlers and server actions, authenticate, authorize, and validate
   at the boundary. Scope user data by the current database user.
 
@@ -40,6 +45,7 @@ Work from the repository root and preserve unrelated developer changes.
 - Never commit the raw Postman collection; it contains an embedded credential.
 - Never enable the development auth provider in production.
 - Never run `local:reset` against a shared or hosted database.
+- Never use integration or E2E fixtures against a shared or hosted database.
 - Preserve the local lifecycle command's non-loopback database guard.
 - Never persist full marketplace responses when normalized evidence suffices.
 - Keep scanner leases, idempotent notifications, alert evidence snapshots, and

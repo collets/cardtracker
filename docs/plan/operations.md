@@ -21,6 +21,10 @@ Database leases make retries and overlapping invocations safe.
 - Five-minute MVP: one Vercel Pro seat, approximately USD 20/month.
 - Production database upgrade: Supabase Pro adds approximately USD 25/month.
 
-Administrators monitor stale scans, failed runs, active unique blueprints, and
-notification failures in the application. Capacity defaults to 250 unique active
-blueprints.
+Administrators inspect recent runs and capacity in the application. Operators
+use `pnpm ops:status -- --allow-hosted` for an aggregate report of stale scans,
+failed runs, active unique blueprints, and notification failures. Capacity
+defaults to 250 unique active blueprints.
+
+The daily-to-five-minute promotion, hosted smoke sequence, and rollback gates are
+defined in `docs/PRODUCTION_ROLLOUT.md`.

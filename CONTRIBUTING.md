@@ -117,6 +117,16 @@ owner instructions. Removing it from the latest commit is not sufficient.
 | Database schema                     | migration generation/review, local migrate, and affected flow |
 | Build/tooling/dependency            | `pnpm check:all` and clean-install reasoning                  |
 
+Database-backed service changes must also pass `pnpm test:integration`. The
+integration and Playwright fixture loaders reject non-loopback database URLs;
+do not weaken that guard for convenience.
+
+Production preparation and operator actions are separate. Repository work may
+add or test `prod:check-env`, `ops:status`, and safe hosted smoke behavior, but
+deployments, hosted migrations, authorized cron calls, webhook mutations, and
+plan upgrades require explicit environment-specific approval and follow
+[the production rollout checklist](docs/PRODUCTION_ROLLOUT.md).
+
 Before requesting review, run at least:
 
 ```sh
