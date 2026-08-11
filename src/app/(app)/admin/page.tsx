@@ -1,6 +1,7 @@
 import { count, countDistinct, desc, eq } from "drizzle-orm";
-import { Database, Play, RefreshCw, UserPlus } from "lucide-react";
+import { Database, Play, RefreshCw, Trash2, UserPlus } from "lucide-react";
 import {
+  deletePendingInvitationAction,
   inviteUserAction,
   runScannerAction,
   synchronizeCatalogAction,
@@ -90,6 +91,10 @@ export default async function AdminPage() {
             <CardTitle>Invite a user</CardTitle>
           </CardHeader>
           <CardContent>
+            <p className="mb-4 text-xs leading-5 text-slate-500">
+              Invitations grant an email address access to Google sign-in. No
+              invitation email is sent.
+            </p>
             <form
               action={inviteUserAction}
               className="flex flex-col gap-3 sm:flex-row"
@@ -119,10 +124,29 @@ export default async function AdminPage() {
                   key={invite.id}
                   className="flex items-center justify-between rounded-lg bg-white/[0.03] px-3 py-2 text-sm"
                 >
-                  <span>{invite.email}</span>
-                  <Badge variant={invite.acceptedAt ? "success" : "muted"}>
-                    {invite.acceptedAt ? "accepted" : "pending"}
-                  </Badge>
+                  <span className="min-w-0 truncate">{invite.email}</span>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Badge variant={invite.acceptedAt ? "success" : "muted"}>
+                      {invite.acceptedAt ? "accepted" : "pending"}
+                    </Badge>
+                    {!invite.acceptedAt ? (
+                      <form action={deletePendingInvitationAction}>
+                        <input
+                          type="hidden"
+                          name="invitationId"
+                          value={invite.id}
+                        />
+                        <Button
+                          type="submit"
+                          size="sm"
+                          variant="destructive"
+                          aria-label={`Delete invitation for ${invite.email}`}
+                        >
+                          <Trash2 className="size-3.5" /> Delete
+                        </Button>
+                      </form>
+                    ) : null}
+                  </div>
                 </div>
               ))}
             </div>

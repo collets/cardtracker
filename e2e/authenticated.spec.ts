@@ -1,5 +1,11 @@
 import { expect, test, type Page } from "@playwright/test";
-import { e2eAdminEmail, e2eUserEmail, e2eWatchBlueprintId } from "./database";
+import {
+  e2eAcceptedInviteEmail,
+  e2eAdminEmail,
+  e2ePendingInviteEmail,
+  e2eUserEmail,
+  e2eWatchBlueprintId,
+} from "./database";
 
 async function signIn(page: Page, email: string) {
   await page.goto("/sign-in");
@@ -40,6 +46,30 @@ test.describe.serial("authenticated MVP", () => {
     await page.goto("/dashboard");
     await page.getByRole("button", { name: "Remove E2E Watch Card" }).click();
     await expect(page.getByText("E2E Watch Card")).not.toBeVisible();
+  });
+
+  test("admin can delete a pending invitation but not an accepted one", async ({
+    page,
+  }) => {
+    await signIn(page, e2eAdminEmail);
+    await page.goto("/admin");
+
+    await expect(page.getByText(e2ePendingInviteEmail)).toBeVisible();
+    await expect(page.getByText(e2eAcceptedInviteEmail)).toBeVisible();
+    await expect(
+      page.getByRole("button", {
+        name: `Delete invitation for ${e2eAcceptedInviteEmail}`,
+      }),
+    ).toHaveCount(0);
+
+    await page
+      .getByRole("button", {
+        name: `Delete invitation for ${e2ePendingInviteEmail}`,
+      })
+      .click();
+
+    await expect(page.getByText(e2ePendingInviteEmail)).not.toBeVisible();
+    await expect(page.getByText(e2eAcceptedInviteEmail)).toBeVisible();
   });
 
   test("normal user cannot access admin and can mark an alert read", async ({

@@ -1,6 +1,6 @@
 "use server";
 
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/db";
 import { invitations, users } from "@/db/schema";
@@ -22,6 +22,10 @@ const userUpdateSchema = z.object({
   role: z.enum(["admin", "user"]),
 });
 
+const invitationDeleteSchema = z.object({
+  invitationId: z.uuid(),
+});
+
 export async function inviteUserAction(formData: FormData) {
   const admin = await requireAdmin();
   const { email, role } = invitationSchema.parse({
@@ -35,6 +39,21 @@ export async function inviteUserAction(formData: FormData) {
       target: invitations.email,
       set: { role, invitedBy: admin.id, acceptedAt: null },
     });
+  revalidatePath("/admin");
+}
+
+export async function deletePendingInvitationAction(formData: FormData) {
+  await requireAdmin();
+  const { invitationId } = invitationDeleteSchema.parse({
+    invitationId: formData.get("invitationId"),
+  });
+  const [deleted] = await getDb()
+    .delete(invitations)
+    .where(
+      and(eq(invitations.id, invitationId), isNull(invitations.acceptedAt)),
+    )
+    .returning({ id: invitations.id });
+  if (!deleted) throw new Error("Pending invitation not found");
   revalidatePath("/admin");
 }
 
