@@ -6,6 +6,7 @@ import {
   DEFAULT_LANGUAGES,
   DEFAULT_MIN_SAVINGS_CENTS,
   EU_EEA_COUNTRY_CODES,
+  MAX_BULK_WATCHES,
   SUPPORTED_LANGUAGE_CODES,
 } from "@/lib/constants";
 
@@ -54,4 +55,24 @@ export function watchInputFromForm(formData: FormData) {
     minSavingsEuros:
       formData.get("minSavingsEuros") || DEFAULT_MIN_SAVINGS_CENTS / 100,
   });
+}
+
+const bulkBlueprintIdsSchema = z
+  .array(z.coerce.number().int().positive())
+  .min(1, "Select at least one card")
+  .max(MAX_BULK_WATCHES, `Select no more than ${MAX_BULK_WATCHES} cards`)
+  .refine(
+    (values) => new Set(values).size === values.length,
+    "The card selection contains duplicates",
+  );
+
+export function watchInputsFromBulkForm(formData: FormData) {
+  const blueprintIds = bulkBlueprintIdsSchema.parse(
+    formData.getAll("blueprintIds"),
+  );
+  const sharedInput = watchInputFromForm(formData);
+  return blueprintIds.map((blueprintId) => ({
+    ...sharedInput,
+    blueprintId,
+  }));
 }

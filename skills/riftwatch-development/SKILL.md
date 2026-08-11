@@ -25,7 +25,10 @@ Work from the repository root and preserve unrelated developer changes.
 - For schema work, change `src/db/schema.ts`, generate a new migration, inspect
   its SQL, migrate locally, and commit schema plus generated migration metadata.
 - For catalog or scanner work, keep the CardTrader call server-side and exercise
-  the authenticated local cron helper while the app is running.
+  the authenticated local cron helper while the app is running. Preserve the
+  adaptive marketplace strategy: expansion fetches for five or more claimed
+  blueprints in one expansion, individual fetches for smaller groups and manual
+  single-watch scans, with no same-run fan-out after a bulk failure.
 - For pricing work, preserve integer cents/basis points and add focused tests to
   the pure deal evaluator.
 - For integration work, use `pnpm test:integration`; its fixtures must retain the

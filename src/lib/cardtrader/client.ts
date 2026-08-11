@@ -65,6 +65,21 @@ export class CardTraderClient {
     return (response[String(blueprintId)] ?? []).map(normalizeProduct);
   }
 
+  async marketplaceProductsForExpansion(
+    expansionId: number,
+    blueprintIds: readonly number[],
+  ): Promise<Map<number, MarketListing[]>> {
+    const response = productResponseSchema.parse(
+      await this.request(`/marketplace/products?expansion_id=${expansionId}`),
+    );
+    return new Map(
+      [...new Set(blueprintIds)].map((blueprintId) => [
+        blueprintId,
+        (response[String(blueprintId)] ?? []).map(normalizeProduct),
+      ]),
+    );
+  }
+
   private async request(path: string): Promise<unknown> {
     let lastError: unknown;
 

@@ -1,7 +1,6 @@
 export const RIFTBOUND_GAME_ID = 22;
 export const RIFTBOUND_SINGLES_CATEGORY_ID = 258;
 export const CARDTRADER_BASE_URL = "https://api.cardtrader.com/api/v2";
-export const CARDTRADER_WEB_URL = "https://www.cardtrader.com/en/riftbound";
 
 export const EU_EEA_COUNTRY_CODES = [
   "AT",
@@ -55,4 +54,5 @@ export const DEFAULT_CONDITIONS: Array<(typeof CARD_CONDITIONS)[number]> = [
 ];
 export const DEFAULT_DISCOUNT_PERCENT = 20;
 export const DEFAULT_MIN_SAVINGS_CENTS = 500;
+export const MAX_BULK_WATCHES = 500;
 export const PRICE_HISTORY_RETENTION_DAYS = 30;

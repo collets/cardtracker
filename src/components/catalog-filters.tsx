@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Minus, Plus, Search, SlidersHorizontal, Sparkles } from "lucide-react";
+import { CatalogBulkWatchDialog } from "@/components/catalog-selection";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -35,6 +36,7 @@ import type {
   CatalogRarityOption,
 } from "@/lib/catalog/search";
 import { cn } from "@/lib/utils";
+import type { WatchFormDefaults } from "@/components/watch-options-fields";
 
 const LANGUAGE_OPTIONS = [
   ["en", "English"],
@@ -47,6 +49,7 @@ type CatalogFilterProps = {
   filters: CatalogFilters;
   expansions: CatalogExpansionOption[];
   rarities: CatalogRarityOption[];
+  watchDefaults?: WatchFormDefaults;
 };
 
 function QuickFilter({
@@ -129,6 +132,7 @@ export function CatalogToolbar({
   filters,
   expansions,
   rarities,
+  watchDefaults,
 }: CatalogFilterProps) {
   const vendetta = expansions.find((expansion) => expansion.code === "ven");
   const filterCount = catalogFilterCount(filters);
@@ -206,6 +210,7 @@ export function CatalogToolbar({
             Standard
           </QuickFilter>
         </div>
+        <CatalogBulkWatchDialog defaults={watchDefaults} />
         <CardDensityControl filters={filters} />
         <Dialog>
           <DialogTrigger asChild>
@@ -251,7 +256,7 @@ function CatalogFilterForm({
   filters,
   expansions,
   rarities,
-}: CatalogFilterProps & { idPrefix: string }) {
+}: Omit<CatalogFilterProps, "watchDefaults"> & { idPrefix: string }) {
   const resetHref = filters.query
     ? `/cards?q=${encodeURIComponent(filters.query)}`
     : "/cards";

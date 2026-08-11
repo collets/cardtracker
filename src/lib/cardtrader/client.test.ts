@@ -71,4 +71,61 @@ describe("CardTraderClient", () => {
       retryable: true,
     });
   });
+
+  it("fetches an expansion once and returns only requested blueprints", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      Response.json({
+        "400528": [product(1, 400528)],
+        "400530": [product(2, 400530)],
+      }),
+    );
+    const client = new CardTraderClient({ fetchImpl, retries: 0 });
+
+    const listings = await client.marketplaceProductsForExpansion(
+      4521,
+      [400528, 400529, 400528],
+    );
+
+    expect(fetchImpl).toHaveBeenCalledOnce();
+    expect(fetchImpl.mock.calls[0]?.[0]).toContain(
+      "/marketplace/products?expansion_id=4521",
+    );
+    expect([...listings.keys()]).toEqual([400528, 400529]);
+    expect(listings.get(400528)).toMatchObject([
+      { productId: 1, blueprintId: 400528 },
+    ]);
+    expect(listings.get(400529)).toEqual([]);
+    expect(listings.has(400530)).toBe(false);
+  });
+
+  it("rejects malformed products in an expansion response", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(Response.json({ "400528": [{ id: "unsafe" }] }));
+    const client = new CardTraderClient({ fetchImpl, retries: 0 });
+
+    await expect(
+      client.marketplaceProductsForExpansion(4521, [400528]),
+    ).rejects.toMatchObject({ name: "ZodError" });
+  });
 });
+
+function product(id: number, blueprintId: number) {
+  return {
+    id,
+    blueprint_id: blueprintId,
+    name_en: "Expansion card",
+    price_cents: 1_000,
+    price_currency: "EUR",
+    quantity: 1,
+    properties_hash: {},
+    graded: false,
+    on_vacation: false,
+    user: {
+      id,
+      username: `seller-${id}`,
+      can_sell_via_hub: true,
+    },
+    price: { cents: 1_000, currency: "EUR" },
+  };
+}

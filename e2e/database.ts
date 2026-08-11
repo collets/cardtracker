@@ -19,7 +19,7 @@ const e2eUserIds = [
 ] as const;
 const e2eExpansionId = 980_001;
 export const e2eWatchBlueprintId = 980_001;
-const e2eAlertBlueprintId = 980_002;
+export const e2eAlertBlueprintId = 980_002;
 const e2eAlertWatchId = "00000000-0000-4000-8000-000000000811";
 const e2eAlertId = "00000000-0000-4000-8000-000000000821";
 

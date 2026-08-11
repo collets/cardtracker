@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { getDb, getSql } from "@/db";
 import {
   alerts,
@@ -8,6 +8,7 @@ import {
   expansions,
   notificationDeliveries,
   priceObservations,
+  scanRuns,
   telegramChannels,
   userPreferences,
   users,
@@ -18,12 +19,15 @@ import type { MarketListing } from "@/lib/cardtrader/types";
 import {
   claimDueBlueprints,
   pruneOperationalData,
+  runMarketScanner,
   scanBlueprint,
+  scanUserWatchlist,
 } from "@/lib/scanner/service";
 import { dispatchPendingNotifications } from "@/lib/telegram/service";
 
 const expansionId = 990_001;
 const blueprintId = 990_001;
+const expansionBlueprintIds = [990_001, 990_002, 990_003, 990_004, 990_005];
 const userIds = [
   "00000000-0000-4000-8000-000000000901",
   "00000000-0000-4000-8000-000000000902",
@@ -31,6 +35,12 @@ const userIds = [
 const watchIds = [
   "00000000-0000-4000-8000-000000000911",
   "00000000-0000-4000-8000-000000000912",
+] as const;
+const bulkWatchIds = [
+  "00000000-0000-4000-8000-000000000913",
+  "00000000-0000-4000-8000-000000000914",
+  "00000000-0000-4000-8000-000000000915",
+  "00000000-0000-4000-8000-000000000916",
 ] as const;
 
 function listing(productId: number, priceCents: number): MarketListing {
@@ -71,6 +81,22 @@ const qualifyingListings = [
 const nonQualifyingListings = qualifyingListings.map((row, index) =>
   listing(row.productId + 100, 2_000 + index * 50),
 );
+
+function listingsForBlueprint(
+  id: number,
+  source: MarketListing[] = qualifyingListings,
+): MarketListing[] {
+  return source.map((row, index) => ({
+    ...row,
+    productId: id * 100 + index,
+    blueprintId: id,
+    seller: {
+      ...row.seller,
+      id: id * 100 + index,
+      username: `seller-${id}-${index}`,
+    },
+  }));
+}
 
 async function cleanFixtures() {
   await getDb().delete(expansions).where(eq(expansions.id, expansionId));
@@ -212,6 +238,303 @@ describe("scanner persistence", () => {
     ).resolves.toHaveLength(2);
   });
 
+  it("fetches five claimed blueprints through one expansion request", async () => {
+    await getDb()
+      .insert(blueprints)
+      .values(
+        expansionBlueprintIds.slice(1).map((id) => ({
+          id,
+          expansionId,
+          gameId: 22,
+          categoryId: 258,
+          name: `Bulk card ${id}`,
+          rarity: "Rare",
+          fixedProperties: {},
+          editableProperties: [],
+          syncedAt: new Date(),
+        })),
+      );
+    await getDb()
+      .insert(watches)
+      .values(
+        expansionBlueprintIds.slice(1).map((id, index) => ({
+          id: bulkWatchIds[index],
+          userId: userIds[0],
+          blueprintId: id,
+          languages: ["en"],
+          conditions: ["Near Mint"],
+          sellerCountries: ["IT"],
+        })),
+      );
+    await getDb()
+      .insert(blueprintScanState)
+      .values(
+        expansionBlueprintIds.slice(1).map((id) => ({
+          blueprintId: id,
+          nextScanAt: new Date(Date.now() - 60_000),
+          leaseUntil: new Date(Date.now() + 60_000),
+        })),
+      );
+    const marketplaceProducts = vi.fn().mockResolvedValue([]);
+    const marketplaceProductsForExpansion = vi
+      .fn()
+      .mockImplementation(
+        async (_expansionId: number, requestedIds: readonly number[]) =>
+          new Map(requestedIds.map((id) => [id, listingsForBlueprint(id)])),
+      );
+    const runIds: string[] = [];
+
+    try {
+      const result = await runMarketScanner({
+        client: { marketplaceProducts, marketplaceProductsForExpansion },
+        explicitBlueprintIds: expansionBlueprintIds,
+        dispatchNotifications: async () => ({ sent: 0, failed: 0 }),
+      });
+      const [run] = await getDb()
+        .select()
+        .from(scanRuns)
+        .orderBy(desc(scanRuns.startedAt))
+        .limit(1);
+      if (run) runIds.push(run.id);
+
+      expect(result).toEqual({
+        claimed: 5,
+        successes: 5,
+        failures: 0,
+        watches: 6,
+        alerts: 6,
+        marketplaceFetches: { expansions: 1, blueprints: 0 },
+      });
+      expect(marketplaceProductsForExpansion).toHaveBeenCalledOnce();
+      expect(marketplaceProducts).not.toHaveBeenCalled();
+      expect(run).toMatchObject({
+        claimedCount: 5,
+        successCount: 5,
+        failureCount: 0,
+        details: {
+          watches: 6,
+          alerts: 6,
+          marketplaceFetches: { expansions: 1, blueprints: 0 },
+        },
+      });
+      await expect(
+        getDb()
+          .select()
+          .from(watchMetrics)
+          .where(inArray(watchMetrics.watchId, [...watchIds, ...bulkWatchIds])),
+      ).resolves.toHaveLength(6);
+      const states = await getDb()
+        .select()
+        .from(blueprintScanState)
+        .where(inArray(blueprintScanState.blueprintId, expansionBlueprintIds));
+      expect(states).toHaveLength(5);
+      expect(states.every((state) => state.lastScanAt instanceof Date)).toBe(
+        true,
+      );
+      expect(states.every((state) => state.leaseUntil === null)).toBe(true);
+
+      marketplaceProductsForExpansion.mockRejectedValueOnce(
+        new Error("bulk unavailable"),
+      );
+      const failedResult = await runMarketScanner({
+        client: { marketplaceProducts, marketplaceProductsForExpansion },
+        explicitBlueprintIds: expansionBlueprintIds,
+        dispatchNotifications: async () => ({ sent: 0, failed: 0 }),
+      });
+      const [failedRun] = await getDb()
+        .select()
+        .from(scanRuns)
+        .orderBy(desc(scanRuns.startedAt))
+        .limit(1);
+      if (failedRun) runIds.push(failedRun.id);
+      expect(failedResult).toMatchObject({
+        claimed: 5,
+        successes: 0,
+        failures: 5,
+        marketplaceFetches: { expansions: 1, blueprints: 0 },
+      });
+      expect(failedRun).toMatchObject({
+        status: "failed",
+        claimedCount: 5,
+        successCount: 0,
+        failureCount: 5,
+      });
+      const failedStates = await getDb()
+        .select()
+        .from(blueprintScanState)
+        .where(inArray(blueprintScanState.blueprintId, expansionBlueprintIds));
+      expect(
+        failedStates.every(
+          (state) =>
+            state.leaseUntil === null &&
+            state.failureCount === 1 &&
+            state.lastError === "bulk unavailable",
+        ),
+      ).toBe(true);
+      expect(marketplaceProducts).not.toHaveBeenCalled();
+
+      const invalidListing = {
+        ...listingsForBlueprint(blueprintId)[0],
+        productId: 1n,
+      } as unknown as MarketListing;
+      marketplaceProductsForExpansion.mockImplementationOnce(
+        async (_expansionId: number, requestedIds: readonly number[]) =>
+          new Map(
+            requestedIds.map((id) => [
+              id,
+              id === blueprintId
+                ? [invalidListing]
+                : listingsForBlueprint(id, nonQualifyingListings),
+            ]),
+          ),
+      );
+      const partialResult = await runMarketScanner({
+        client: { marketplaceProducts, marketplaceProductsForExpansion },
+        explicitBlueprintIds: expansionBlueprintIds,
+        dispatchNotifications: async () => ({ sent: 0, failed: 0 }),
+      });
+      const [partialRun] = await getDb()
+        .select()
+        .from(scanRuns)
+        .orderBy(desc(scanRuns.startedAt))
+        .limit(1);
+      if (partialRun) runIds.push(partialRun.id);
+      expect(partialResult).toMatchObject({
+        claimed: 5,
+        successes: 4,
+        failures: 1,
+        watches: 4,
+        marketplaceFetches: { expansions: 1, blueprints: 0 },
+      });
+      expect(partialRun).toMatchObject({
+        status: "succeeded",
+        claimedCount: 5,
+        successCount: 4,
+        failureCount: 1,
+      });
+      const partialStates = await getDb()
+        .select()
+        .from(blueprintScanState)
+        .where(inArray(blueprintScanState.blueprintId, expansionBlueprintIds));
+      expect(
+        partialStates.find((state) => state.blueprintId === blueprintId),
+      ).toMatchObject({ failureCount: 2, leaseUntil: null });
+      expect(
+        partialStates
+          .filter((state) => state.blueprintId !== blueprintId)
+          .every(
+            (state) => state.failureCount === 0 && state.leaseUntil === null,
+          ),
+      ).toBe(true);
+    } finally {
+      if (runIds.length > 0) {
+        await getDb().delete(scanRuns).where(inArray(scanRuns.id, runIds));
+      }
+    }
+  });
+
+  it("keeps an explicit scan on the blueprint endpoint", async () => {
+    const marketplaceProducts = vi
+      .fn()
+      .mockResolvedValue(nonQualifyingListings);
+    const marketplaceProductsForExpansion = vi
+      .fn()
+      .mockResolvedValue(new Map());
+    let runId: string | undefined;
+
+    try {
+      const result = await runMarketScanner({
+        explicitBlueprintId: blueprintId,
+        client: { marketplaceProducts, marketplaceProductsForExpansion },
+        dispatchNotifications: async () => ({ sent: 0, failed: 0 }),
+      });
+      const [run] = await getDb()
+        .select({ id: scanRuns.id })
+        .from(scanRuns)
+        .orderBy(desc(scanRuns.startedAt))
+        .limit(1);
+      runId = run?.id;
+
+      expect(result.marketplaceFetches).toEqual({
+        expansions: 0,
+        blueprints: 1,
+      });
+      expect(marketplaceProducts).toHaveBeenCalledOnce();
+      expect(marketplaceProductsForExpansion).not.toHaveBeenCalled();
+    } finally {
+      if (runId) {
+        await getDb().delete(scanRuns).where(eq(scanRuns.id, runId));
+      }
+    }
+  });
+
+  it("builds a bulk request only from the authenticated user's watches", async () => {
+    const otherBlueprintId = 990_010;
+    const otherWatchId = "00000000-0000-4000-8000-000000000917";
+    await getDb().insert(blueprints).values({
+      id: otherBlueprintId,
+      expansionId,
+      gameId: 22,
+      categoryId: 258,
+      name: "Other user's card",
+      rarity: "Rare",
+      fixedProperties: {},
+      editableProperties: [],
+      syncedAt: new Date(),
+    });
+    await getDb()
+      .insert(watches)
+      .values({
+        id: otherWatchId,
+        userId: userIds[1],
+        blueprintId: otherBlueprintId,
+        languages: ["en"],
+        conditions: ["Near Mint"],
+        sellerCountries: ["IT"],
+      });
+    await getDb()
+      .insert(blueprintScanState)
+      .values({
+        blueprintId: otherBlueprintId,
+        nextScanAt: new Date(Date.now() - 60_000),
+      });
+    const marketplaceProducts = vi
+      .fn()
+      .mockResolvedValue(nonQualifyingListings);
+    const marketplaceProductsForExpansion = vi
+      .fn()
+      .mockResolvedValue(new Map());
+    let runId: string | undefined;
+
+    try {
+      const result = await scanUserWatchlist(userIds[0], {
+        client: { marketplaceProducts, marketplaceProductsForExpansion },
+        dispatchNotifications: async () => ({ sent: 0, failed: 0 }),
+      });
+      const [run] = await getDb()
+        .select({ id: scanRuns.id })
+        .from(scanRuns)
+        .orderBy(desc(scanRuns.startedAt))
+        .limit(1);
+      runId = run?.id;
+
+      expect(result).toMatchObject({
+        claimed: 1,
+        successes: 1,
+        failures: 0,
+        marketplaceFetches: { expansions: 0, blueprints: 1 },
+      });
+      expect(marketplaceProducts).toHaveBeenCalledOnce();
+      expect(marketplaceProducts).toHaveBeenCalledWith(blueprintId);
+      expect(marketplaceProducts).not.toHaveBeenCalledWith(otherBlueprintId);
+      expect(marketplaceProductsForExpansion).not.toHaveBeenCalled();
+    } finally {
+      if (runId) {
+        await getDb().delete(scanRuns).where(eq(scanRuns.id, runId));
+      }
+    }
+  });
+
   it("expires an alert after two consecutive misses", async () => {
     await scanBlueprint(blueprintId, {
       marketplaceProducts: vi.fn().mockResolvedValue(qualifyingListings),
@@ -279,6 +602,17 @@ describe("scanner persistence", () => {
       dispatchPendingNotifications(telegramFetch, { deliveryIds }),
     ).resolves.toEqual({ sent: 0, failed: 0 });
     expect(telegramFetch).toHaveBeenCalledTimes(2);
+    for (const [, request] of telegramFetch.mock.calls) {
+      const body = JSON.parse(String(request?.body)) as {
+        reply_markup?: {
+          inline_keyboard?: Array<Array<{ text: string; url: string }>>;
+        };
+      };
+      expect(body.reply_markup?.inline_keyboard?.[0]?.[0]).toEqual({
+        text: "Open CardTrader",
+        url: `https://www.cardtrader.com/en/cards/${blueprintId}`,
+      });
+    }
 
     await getDb()
       .update(notificationDeliveries)
