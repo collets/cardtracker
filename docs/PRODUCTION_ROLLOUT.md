@@ -61,9 +61,12 @@ DB_PASSWORD="$DB_PASSWORD" node -e 'console.log(encodeURIComponent(process.env.D
 unset DB_PASSWORD
 ```
 
-The encoded output remains a credential. Insert it into the direct connection
-string in the password manager, ensure the URL enables SSL, and do not paste the
-completed URL into chat, logs, or repository files.
+Encode only the password component—never pass the complete connection URL to
+`encodeURIComponent`. The `postgresql://` scheme, username, `@`, hostname, port,
+and database path must remain literal. The encoded output remains a credential.
+Insert it into the direct connection string in the password manager, ensure the
+URL enables SSL, and do not paste the completed URL into chat, logs, or
+repository files.
 
 Load the completed direct URL invisibly for one migration session:
 
@@ -71,14 +74,32 @@ Load the completed direct URL invisibly for one migration session:
 read -rs 'DATABASE_URL_DIRECT?Supabase direct connection URL: '
 echo
 export DATABASE_URL_DIRECT
+node -e 'const u = new URL(process.env.DATABASE_URL_DIRECT); console.log({ hostname: u.hostname, port: u.port, database: u.pathname })'
 pnpm db:migrate
 unset DATABASE_URL_DIRECT
 ```
 
+The verification command deliberately prints only the non-secret destination.
+It must show either the expected `db.<project-ref>` direct hostname or the
+expected `aws-<region>.pooler.supabase.com` session-pooler hostname, together
+with port `5432` and database `/postgres`. Stop if it instead shows a local host,
+an unexpected project reference or region, port `6543`, or an empty value.
+
+If the direct endpoint fails with `connect ENETUNREACH` and an IPv6 address, the
+workstation has no route to Supabase's IPv6-only direct endpoint. Do not keep
+retrying it and do not purchase an IPv4 add-on merely for migrations. Copy the
+project's **session-mode pooler** URL from Supabase Connect, ensure it uses port
+`5432`, and load that complete URL as `DATABASE_URL_DIRECT` with the same
+procedure. The session pooler is suitable for this one-session migration; the
+transaction pooler on port `6543` remains the application runtime URL.
+
 Drizzle may report that the `drizzle` schema and `__drizzle_migrations` relation
 already exist. Those idempotent PostgreSQL notices are expected and do not prove
-that the application tables were created. In the Supabase SQL Editor, verify the
-remote catalog without modifying it:
+that the application tables were created. Supabase's migration UI and CLI track
+only Supabase CLI migrations in `supabase_migrations.schema_migrations`; they do
+not display the repository's Drizzle migration history. For Riftwatch,
+`drizzle.__drizzle_migrations` is the authoritative remote ledger. In the
+Supabase SQL Editor, verify the remote catalog without modifying it:
 
 ```sql
 select table_schema, table_name
