@@ -9,9 +9,10 @@ The initial rollout uses Vercel's daily Hobby-compatible smoke schedule. Do not
 enable minute-level scanning until the daily deployment is healthy and the
 Vercel plan change has been approved.
 
-Status updated **2026-08-11**: repository controls and the initial Supabase
-database migration are complete. The next rollout stage is Vercel project
-configuration; checks that require a hosted runtime remain open.
+Status updated **2026-08-11**: repository controls, the initial Supabase
+database migration, and the production Vercel database connection are complete.
+Production Google authentication and the isolated Preview environment remain to
+be configured before the hosted smoke rollout.
 
 ## 1. Review and repository controls
 
@@ -38,7 +39,7 @@ configuration; checks that require a hosted runtime remain open.
 - [x] Confirm the migration command reports success, the Riftwatch tables exist
       in `public`, and `drizzle.__drizzle_migrations` contains both committed
       migrations.
-- [ ] After the first Vercel deployment, confirm `/api/health` reports
+- [x] After the first Vercel deployment, confirm `/api/health` reports
       `database: "connected"` through the pooled production `DATABASE_URL`.
 - [ ] Review Supabase backup and restore coverage before inviting users. Point-in-
       time recovery is a separate paid capability and must not be enabled without
@@ -127,9 +128,9 @@ or rewrite it.
 
 ## 3. Configure the Vercel project
 
-- [ ] Import `collets/cardtracker` into Vercel and select `main` as the production
+- [x] Import `collets/cardtracker` into Vercel and select `main` as the production
       branch.
-- [ ] Confirm the function region is `fra1`, as committed in `vercel.json`.
+- [x] Confirm the function region is `fra1`, as committed in `vercel.json`.
 - [ ] Keep the committed daily catalog and market cron schedules for the first
       deployment.
 - [ ] Configure the variables below separately for Production and Preview.
