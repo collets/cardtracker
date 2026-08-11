@@ -24,6 +24,8 @@ that matches the task:
 - `docs/DEVELOPMENT.md` for local commands, environment, tests, and debugging.
 - `CONTRIBUTING.md` for architecture, security, migrations, and review standards.
 - `docs/API.md` for route and integration contracts.
+- `docs/SECURITY.md` for trust boundaries, authentication, database roles, RLS,
+  browser policy, audit events, and incident response.
 - `docs/plan/` for product, pricing, architecture, and operations decisions.
 
 ## Working commands
@@ -54,6 +56,10 @@ Preserve unrelated work and generated Drizzle migrations.
   authorize, validate, and scope user-owned records.
 - Keep production development-auth rejection, cron authentication, Telegram
   webhook verification, hashed one-time link tokens, and idempotent deliveries.
+- Preserve the `riftwatch_app`/`riftwatch_runtime` least-privilege split, forced
+  RLS, disabled Supabase Data API assumption, and append-only admin audit trail.
+- Preserve the 24-hour Auth.js session, verified Google email requirement,
+  strict nonce CSP, and OAuth token minimization.
 - Store prices as integer cents. Do not introduce floating-point persistence for
   money.
 

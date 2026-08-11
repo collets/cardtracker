@@ -12,8 +12,10 @@ Work from the repository root and preserve unrelated developer changes.
 1. Read `AGENTS.md` and retain its generated Next.js rule block.
 2. Read `docs/DEVELOPMENT.md` for commands and environment behavior.
 3. Read `CONTRIBUTING.md` for security, architecture, and verification rules.
-4. Read only the relevant decision record under `docs/plan/`.
-5. Before changing Next.js behavior, read the relevant installed guide under
+4. Read `docs/SECURITY.md` for any auth, action, route, database, secret,
+   integration, deployment, or browser-policy work.
+5. Read only the relevant decision record under `docs/plan/`.
+6. Before changing Next.js behavior, read the relevant installed guide under
    `node_modules/next/dist/docs/`; do not rely on older framework knowledge.
 
 ## Choose the workflow
@@ -48,6 +50,9 @@ Work from the repository root and preserve unrelated developer changes.
 - Never use integration or E2E fixtures against a shared or hosted database.
 - Preserve the local lifecycle command's non-loopback database guard.
 - Never persist full marketplace responses when normalized evidence suffices.
+- Never weaken forced RLS, the non-login runtime role, append-only audit grants,
+  or the disabled Supabase Data API assumption.
+- Never persist unused OAuth access, refresh, or ID tokens.
 - Keep scanner leases, idempotent notifications, alert evidence snapshots, and
   two-miss expiry behavior intact unless the product decision changes.
 

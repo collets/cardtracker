@@ -28,11 +28,27 @@ Vercel plan change has been approved.
       migration workstation cannot reach the IPv6 direct endpoint, use the
       session-mode pooler on port `5432` for this one-session operation.
 - [ ] Confirm SSL is enabled in both connection strings.
+- [x] Disable the Supabase Data API. Riftwatch does not use PostgREST,
+      Supabase browser keys, Storage, or Realtime.
 - [ ] Apply committed migrations with `pnpm db:migrate` from a trusted machine
       where `DATABASE_URL_DIRECT` is present in the process environment. Do not
       paste either URL into shell history, logs, issues, or chat.
 - [ ] Confirm the migration command reports success and `/api/health` can query
       the resulting schema after deployment.
+- [ ] After the security migration, create `riftwatch_app` interactively with
+      login and no elevated role flags, grant it `riftwatch_runtime`, and set its
+      password with `psql`'s `\password` prompt. Never commit the password or put
+      it in SQL history.
+- [ ] Replace the transaction-pooler username with
+      `riftwatch_app.<project-ref>`, keep port `6543` and `sslmode=require`, then
+      update only Vercel `DATABASE_URL` and redeploy.
+- [ ] Remove the `postgres` runtime URL from Vercel and shell startup files.
+      Retain the migration credential only in the password manager and trusted
+      migration shell.
+- [ ] Run `pnpm db:security-audit -- --allow-hosted` with the new pooled runtime
+      URL. Confirm the role is unprivileged, TLS is active, every application
+      table forces RLS, Supabase API grants are zero, and audit mutation grants
+      are zero.
 - [ ] Review Supabase backup and restore coverage before inviting users. Point-in-
       time recovery is a separate paid capability and must not be enabled without
       approval.
@@ -59,7 +75,7 @@ Region availability is documented in the
 | Variable                                                                   | Production value                                                 | Preview rule                  |
 | -------------------------------------------------------------------------- | ---------------------------------------------------------------- | ----------------------------- |
 | `NEXT_PUBLIC_APP_URL`                                                      | Final HTTPS production origin                                    | Preview/branch HTTPS origin   |
-| `DATABASE_URL`                                                             | Supabase transaction pooler                                      | Isolated preview database     |
+| `DATABASE_URL`                                                             | `riftwatch_app` Supabase transaction pooler                      | Isolated preview database     |
 | `DATABASE_URL_DIRECT`                                                      | Do not grant to runtime; use only in the trusted migration shell | Same rule                     |
 | `AUTH_SECRET`                                                              | Random 32+ character secret                                      | Different random secret       |
 | `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET`                                    | Production web client                                            | Separate test client or unset |
@@ -73,7 +89,8 @@ Region availability is documented in the
 | `DEFAULT_WATCH_QUOTA`                                                      | `50`                                                             | Small test quota              |
 
 Before deployment, run `pnpm prod:check-env` in a secure shell containing the
-intended production values. Before migration, also run
+intended production runtime values and no `DATABASE_URL_DIRECT`. Before
+migration, use a separate shell containing the direct URL and run
 `pnpm prod:check-env -- --require-direct`. The command reports names and
 validation errors only; it never prints values. See
 [Vercel environment variables](https://vercel.com/docs/environment-variables)
@@ -102,7 +119,12 @@ and [OAuth policies](https://developers.google.com/identity/protocols/oauth2/pol
 - [ ] Deploy `main` with the daily schedules in `vercel.json`.
 - [ ] Run `pnpm smoke:hosted -- --url https://<production-host>` without an
       authorization flag. Confirm health, public pages, sign-in redirects, and
-      cron rejection all pass.
+      cron rejection all pass. The command also verifies the strict CSP,
+      security headers, and secure Auth.js cookie attributes.
+- [ ] In Vercel Firewall, prepare one fixed-window rule for non-static traffic:
+      120 requests per minute per source IP. Publish in log mode, review normal
+      traffic, then enforce 429. Skip the rule if the dashboard requires a paid
+      opt-in; do not approve billing implicitly.
 - [ ] Run `pnpm smoke:hosted -- --url https://<production-host> --run-catalog`
       from a secure shell containing the matching `CRON_SECRET`.
 - [ ] Sign in, confirm the Riftbound catalog is populated, and create one watch.

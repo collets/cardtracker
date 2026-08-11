@@ -16,7 +16,8 @@ remain server-side.
 | `POST`     | `/api/telegram/webhook`   | `X-Telegram-Bot-Api-Secret-Token`     | Process verified Telegram updates                     |
 
 All dynamic endpoints run in the Node.js server runtime. Cron routes allow up to
-240 seconds and rely on database leases for retry/overlap safety.
+240 seconds, use timing-safe bearer verification, disable response caching, and
+rely on database leases for retry/overlap safety.
 
 ## Health
 
@@ -72,8 +73,11 @@ state and may call CardTrader.
 Catalog success resembles:
 
 ```json
-{ "expansions": 17, "blueprints": 1521 }
+{ "status": "succeeded", "expansions": 17, "blueprints": 1521 }
 ```
+
+A concurrent or recently completed catalog request returns `status: "skipped"`
+without calling CardTrader again.
 
 Counts vary as CardTrader changes. Market scan responses report claimed,
 successful, and failed work. Operational details are also stored in `scan_runs`.
@@ -95,14 +99,17 @@ is idempotently tracked in PostgreSQL.
 ## Server actions
 
 Authenticated UI mutations use server actions rather than public REST routes.
-Actions recheck the database user and role, validate form data, and scope
-user-owned objects by `userId`. Important actions include watch creation/update,
+The frontend does not attach a custom bearer token. Auth.js sends its signed,
+encrypted, `HttpOnly` session cookie; actions then recheck the database user and
+role, validate form data, and scope user-owned objects by `userId`. Important
+actions include watch creation/update,
 manual watch scans, preference changes, Telegram linking, invitations, user
 administration, catalog synchronization, and scanner execution.
 
 An invitation is an administrator-managed allowlist record for Google sign-in;
 Riftwatch does not currently send invitation email. Administrators can revoke a
 pending invitation, while accepted invitation history remains retained.
+Privileged administrator outcomes are appended to the database audit trail.
 
 When adding an action, treat it as an externally callable mutation: authenticate,
 authorize, validate, perform the smallest mutation, and revalidate or redirect

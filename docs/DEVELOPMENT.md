@@ -289,6 +289,12 @@ The Drizzle schema is in `src/db/schema.ts`; generated SQL and snapshots are in
 serverless deployment, use a transaction pooler for runtime traffic and a direct
 or session connection for the migration command.
 
+Production uses a dedicated `riftwatch_app` login that inherits the non-login
+`riftwatch_runtime` role. Local development retains its disposable database
+owner for lifecycle simplicity; integration tests use `SET ROLE
+riftwatch_runtime` to exercise hosted permissions and RLS. Never put the
+production login password in a migration or `.env.example`.
+
 Do not modify a migration that may already have been applied by another
 developer or environment; create a follow-up migration. Do not use destructive
 reset commands against shared, preview, or production databases.
@@ -327,13 +333,15 @@ browser tests. Playwright seeds deterministic admin, user, catalog, watch, and
 alert fixtures and removes them afterward. Both Playwright and integration
 fixtures refuse non-loopback database URLs.
 
-`pnpm test:integration` exercises scanner leases, evidence persistence, alert
-lifecycle, Telegram delivery idempotency, failures, and pruning against local
-PostgreSQL. Keep Docker running before invoking it.
+`pnpm test:integration` exercises RLS/runtime grants, immutable audit records,
+administrator invariants, scanner leases, evidence persistence, alert lifecycle,
+Telegram delivery idempotency, failures, and pruning against local PostgreSQL.
+Keep Docker running before invoking it.
 
 GitHub Actions runs the same checks on Node.js 24 with PostgreSQL 17. Third-party
 actions are pinned to immutable release commits, use the Node.js 24 action
-runtime, and receive weekly update proposals through Dependabot. Review the
+runtime, audit production dependencies, and receive weekly npm and Actions
+update proposals through Dependabot. Review the
 version comment and upstream release notes whenever Dependabot changes a pin.
 
 ## Production-readiness tools
@@ -347,6 +355,8 @@ checklist in [Production rollout](PRODUCTION_ROLLOUT.md):
 | `pnpm prod:check-env -- --require-direct`        | Also require the hosted migration connection                                                |
 | `pnpm ops:status`                                | Report aggregate local capacity, stale work, and failures                                   |
 | `pnpm ops:status -- --allow-hosted`              | Explicitly permit the same read-only report against a hosted database                       |
+| `pnpm db:security-audit`                         | Audit role flags, grants, TLS, and RLS for the configured runtime connection                |
+| `pnpm db:security-audit -- --allow-hosted`       | Explicitly permit the read-only audit against a hosted runtime connection                   |
 | `pnpm smoke:hosted -- --url <url>`               | Check health, public pages, auth redirect, and unauthorized cron boundaries                 |
 | `pnpm smoke:hosted -- --url <url> --run-catalog` | Explicitly run the authenticated catalog job                                                |
 | `pnpm smoke:hosted -- --url <url> --run-scan`    | Explicitly run the authenticated market job                                                 |
@@ -354,6 +364,12 @@ checklist in [Production rollout](PRODUCTION_ROLLOUT.md):
 The two `--run-*` flags mutate hosted state and make external CardTrader calls.
 Never use them merely to see whether a URL is reachable. The safe smoke command
 does not send `CRON_SECRET`.
+
+The default local PostgreSQL login owns the development database and is
+intentionally privileged, so `db:security-audit` is expected to reject its role
+flags. Local RLS and grant behavior is verified by `pnpm test:integration`,
+which explicitly assumes `riftwatch_runtime`. Use the security-audit command
+with the unprivileged `riftwatch_app` connection during deployment verification.
 
 For bounded marketplace research after catalog synchronization:
 

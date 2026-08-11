@@ -16,3 +16,10 @@ require an authenticated administrator.
 
 Secrets must never be logged. Raw marketplace payloads are processed in memory,
 and external error bodies are reduced to status and a safe message.
+
+Production database access separates the migration owner from a non-privileged
+`riftwatch_app` login inheriting `riftwatch_runtime`. Every application table
+forces RLS; Supabase API roles have no grants and the Data API remains disabled.
+Auth.js sessions expire after 24 hours, privileged actions are append-only
+audited, and HTML uses a request nonce with a strict CSP. The complete control
+inventory is in [Security](../SECURITY.md).

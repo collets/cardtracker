@@ -34,22 +34,23 @@ Turbopack. PostgreSQL remains running after the Next.js process stops. Use
 
 ## Common commands
 
-| Command                 | Purpose                                                   |
-| ----------------------- | --------------------------------------------------------- |
-| `pnpm dev`              | Prepare PostgreSQL, migrate, seed, and start Next.js      |
-| `pnpm local:doctor`     | Validate tools, Docker, environment, DB, and app health   |
-| `pnpm local:status`     | Show container, PostgreSQL, and HTTP health               |
-| `pnpm cron:catalog`     | Synchronize Riftbound expansions and blueprints           |
-| `pnpm cron:scan`        | Scan all due watched blueprints                           |
-| `pnpm test:integration` | Exercise scanner persistence against local PostgreSQL     |
-| `pnpm prod:check-env`   | Validate production configuration without printing values |
-| `pnpm ops:status`       | Report local operational capacity and failures            |
-| `pnpm smoke:hosted`     | Run safe checks against an explicitly selected deployment |
-| `pnpm market:calibrate` | Sample aggregate CardTrader signal quality                |
-| `pnpm db:shell`         | Open a local `psql` session                               |
-| `pnpm docs:check`       | Validate documentation links and package commands         |
-| `pnpm check`            | Run formatting, lint, types, and unit tests               |
-| `pnpm check:all`        | Also run the production build and browser tests           |
+| Command                  | Purpose                                                   |
+| ------------------------ | --------------------------------------------------------- |
+| `pnpm dev`               | Prepare PostgreSQL, migrate, seed, and start Next.js      |
+| `pnpm local:doctor`      | Validate tools, Docker, environment, DB, and app health   |
+| `pnpm local:status`      | Show container, PostgreSQL, and HTTP health               |
+| `pnpm cron:catalog`      | Synchronize Riftbound expansions and blueprints           |
+| `pnpm cron:scan`         | Scan all due watched blueprints                           |
+| `pnpm test:integration`  | Exercise scanner persistence against local PostgreSQL     |
+| `pnpm prod:check-env`    | Validate production configuration without printing values |
+| `pnpm ops:status`        | Report local operational capacity and failures            |
+| `pnpm db:security-audit` | Audit the configured runtime role, TLS, grants, and RLS   |
+| `pnpm smoke:hosted`      | Run safe checks against an explicitly selected deployment |
+| `pnpm market:calibrate`  | Sample aggregate CardTrader signal quality                |
+| `pnpm db:shell`          | Open a local `psql` session                               |
+| `pnpm docs:check`        | Validate documentation links and package commands         |
+| `pnpm check`             | Run formatting, lint, types, and unit tests               |
+| `pnpm check:all`         | Also run the production build and browser tests           |
 
 Run `pnpm local:reset` only when you intend to delete the local PostgreSQL
 volume. It requires interactive confirmation; automation must pass `--yes`.
@@ -60,6 +61,8 @@ volume. It requires interactive confirmation; automation must pass `--yes`.
 - [Contributing](CONTRIBUTING.md)
 - [Application and integration endpoints](docs/API.md)
 - [Production rollout operator checklist](docs/PRODUCTION_ROLLOUT.md)
+- [Security controls and operations](docs/SECURITY.md)
+- [Vulnerability reporting policy](SECURITY.md)
 - [Architecture and product decisions](docs/plan/README.md)
 - [Project instructions for coding agents](AGENTS.md)
 - [Reusable Riftwatch agent skill](skills/riftwatch-development/SKILL.md)

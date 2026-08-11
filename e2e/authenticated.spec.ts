@@ -70,6 +70,7 @@ test.describe.serial("authenticated MVP", () => {
 
     await expect(page.getByText(e2ePendingInviteEmail)).not.toBeVisible();
     await expect(page.getByText(e2eAcceptedInviteEmail)).toBeVisible();
+    await expect(page.getByText("invitation.revoke").first()).toBeVisible();
   });
 
   test("normal user cannot access admin and can mark an alert read", async ({

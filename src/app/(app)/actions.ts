@@ -23,6 +23,8 @@ const preferencesSchema = z.object({
   conditions: z.array(z.enum(CARD_CONDITIONS)).min(1),
   requireZero: z.boolean(),
 });
+const watchIdSchema = z.object({ watchId: z.uuid() });
+const alertIdSchema = z.object({ alertId: z.uuid() });
 
 export async function addWatchAction(formData: FormData) {
   const user = await requireUser();
@@ -33,13 +35,14 @@ export async function addWatchAction(formData: FormData) {
 
 export async function removeWatchAction(formData: FormData) {
   const user = await requireUser();
-  await removeWatch(user.id, String(formData.get("watchId") ?? ""));
+  const { watchId } = watchIdSchema.parse({ watchId: formData.get("watchId") });
+  await removeWatch(user.id, watchId);
   revalidatePath("/dashboard");
 }
 
 export async function updateWatchAction(formData: FormData) {
   const user = await requireUser();
-  const watchId = String(formData.get("watchId") ?? "");
+  const { watchId } = watchIdSchema.parse({ watchId: formData.get("watchId") });
   const input = watchInputFromForm(formData);
   await updateWatch(user.id, watchId, input);
   revalidatePath(`/watches/${watchId}`);
@@ -48,7 +51,7 @@ export async function updateWatchAction(formData: FormData) {
 
 export async function scanWatchAction(formData: FormData) {
   const user = await requireUser();
-  const watchId = String(formData.get("watchId") ?? "");
+  const { watchId } = watchIdSchema.parse({ watchId: formData.get("watchId") });
   const [watch] = await getDb()
     .select({ blueprintId: watches.blueprintId })
     .from(watches)
@@ -62,8 +65,8 @@ export async function scanWatchAction(formData: FormData) {
 
 export async function markAlertReadAction(formData: FormData) {
   const user = await requireUser();
-  const alertId = String(formData.get("alertId") ?? "");
-  await getDb()
+  const { alertId } = alertIdSchema.parse({ alertId: formData.get("alertId") });
+  const [updated] = await getDb()
     .update(alerts)
     .set({ readAt: new Date() })
     .where(
@@ -71,7 +74,9 @@ export async function markAlertReadAction(formData: FormData) {
         eq(alerts.id, alertId),
         sql`exists (select 1 from ${watches} where ${watches.id} = ${alerts.watchId} and ${watches.userId} = ${user.id})`,
       ),
-    );
+    )
+    .returning({ id: alerts.id });
+  if (!updated) throw new Error("Alert not found");
   revalidatePath("/alerts");
 }
 

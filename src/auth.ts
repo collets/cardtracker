@@ -13,6 +13,10 @@ import {
   verificationTokens,
 } from "@/db/schema";
 import { resolveKnownUserRole } from "@/lib/auth/authorization";
+import {
+  isVerifiedGoogleProfile,
+  omitStoredOAuthTokens,
+} from "@/lib/auth/google";
 import { normalizeEmail } from "@/lib/utils";
 
 const devAuthEnabled =
@@ -77,6 +81,7 @@ if (process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET) {
     Google({
       clientId: process.env.AUTH_GOOGLE_ID,
       clientSecret: process.env.AUTH_GOOGLE_SECRET,
+      account: omitStoredOAuthTokens,
     }),
   );
 }
@@ -119,22 +124,22 @@ if (devAuthEnabled) {
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: DrizzleAdapter(getDb(), {
-    usersTable: users,
-    accountsTable: accounts,
-    sessionsTable: sessions,
-    verificationTokensTable: verificationTokens,
+    // enableRLS() intentionally removes the builder method from the table type;
+    // the adapter's structural type still requires it even though runtime access
+    // only depends on these columns.
+    usersTable: users as never,
+    accountsTable: accounts as never,
+    sessionsTable: sessions as never,
+    verificationTokensTable: verificationTokens as never,
   }),
   providers,
-  session: { strategy: "jwt" },
+  session: { strategy: "jwt", maxAge: 24 * 60 * 60 },
+  useSecureCookies: process.env.NODE_ENV === "production",
   pages: { signIn: "/sign-in" },
   callbacks: {
     async signIn({ user, account, profile }) {
       if (!user.email) return false;
-      if (
-        account?.provider === "google" &&
-        profile &&
-        profile.email_verified !== true
-      )
+      if (account?.provider === "google" && !isVerifiedGoogleProfile(profile))
         return false;
       return Boolean(await authorizationForEmail(user.email));
     },

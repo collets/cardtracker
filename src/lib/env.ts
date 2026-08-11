@@ -88,6 +88,11 @@ export function productionEnvironmentIssues(
   if (options.requireDirectDatabase && !env.DATABASE_URL_DIRECT) {
     issues.push("DATABASE_URL_DIRECT: required for hosted migrations");
   }
+  if (!options.requireDirectDatabase && env.DATABASE_URL_DIRECT) {
+    issues.push(
+      "DATABASE_URL_DIRECT: must not be present in the application runtime environment",
+    );
+  }
   if ((env.AUTH_SECRET?.length ?? 0) < 32) {
     issues.push(
       "AUTH_SECRET: must contain at least 32 characters in production",
@@ -114,6 +119,22 @@ export function productionEnvironmentIssues(
     try {
       if (new URL(env.NEXT_PUBLIC_APP_URL).protocol !== "https:") {
         issues.push("NEXT_PUBLIC_APP_URL: production URL must use HTTPS");
+      }
+    } catch {
+      // The schema issue above already identifies an invalid URL.
+    }
+  }
+  if (env.DATABASE_URL) {
+    try {
+      const databaseUrl = new URL(env.DATABASE_URL);
+      const role = decodeURIComponent(databaseUrl.username).split(".")[0];
+      if (role !== "riftwatch_app") {
+        issues.push(
+          "DATABASE_URL: production runtime must use the riftwatch_app role",
+        );
+      }
+      if (databaseUrl.searchParams.get("sslmode") !== "require") {
+        issues.push("DATABASE_URL: production connections must require SSL");
       }
     } catch {
       // The schema issue above already identifies an invalid URL.

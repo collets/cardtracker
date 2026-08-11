@@ -18,6 +18,7 @@ import type { MarketListing } from "@/lib/cardtrader/types";
 import {
   claimDueBlueprints,
   pruneOperationalData,
+  runMarketScanner,
   scanBlueprint,
 } from "@/lib/scanner/service";
 import { dispatchPendingNotifications } from "@/lib/telegram/service";
@@ -164,6 +165,28 @@ describe("scanner persistence", () => {
     ]);
 
     expect(claims.flat().filter((id) => id === blueprintId)).toHaveLength(1);
+  });
+
+  it("deduplicates overlapping explicit scans through the normal lease", async () => {
+    const marketplaceProducts = vi.fn().mockResolvedValue(qualifyingListings);
+    const dispatchNotifications = vi
+      .fn()
+      .mockResolvedValue({ sent: 0, failed: 0 });
+    const results = await Promise.all([
+      runMarketScanner({
+        explicitBlueprintId: blueprintId,
+        client: { marketplaceProducts },
+        dispatchNotifications,
+      }),
+      runMarketScanner({
+        explicitBlueprintId: blueprintId,
+        client: { marketplaceProducts },
+        dispatchNotifications,
+      }),
+    ]);
+
+    expect(results.reduce((sum, result) => sum + result.claimed, 0)).toBe(1);
+    expect(marketplaceProducts).toHaveBeenCalledTimes(1);
   });
 
   it("fetches once per blueprint and creates idempotent evidence for every watch", async () => {

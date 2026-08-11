@@ -311,7 +311,7 @@ export async function runMarketScanner(
     .returning();
   if (!run) throw new Error("Could not create market scan run");
   const blueprintIds = options.explicitBlueprintId
-    ? [options.explicitBlueprintId]
+    ? await claimDueBlueprints(1, options.explicitBlueprintId)
     : await claimDueBlueprints();
   let successes = 0;
   let failures = 0;

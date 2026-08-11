@@ -100,6 +100,15 @@ bypass that guard.
 - Keep cron endpoints protected by `CRON_SECRET` and Telegram webhooks protected
   by Telegram's secret-token header.
 - Keep Auth.js development credentials disabled in production.
+- Preserve the 24-hour secure Auth.js cookie, verified-Google-email check, and
+  non-persistence of unused OAuth tokens.
+- Keep `DATABASE_URL_DIRECT` out of runtime environments and preserve the
+  `riftwatch_app` / `riftwatch_runtime` least-privilege split.
+- Keep RLS forced on application tables and never grant Supabase API roles
+  access while the Data API is disabled.
+- Keep administrator audit events append-only and free of secrets, emails, and
+  raw error bodies.
+- Preserve the strict nonce CSP and validate new browser origins explicitly.
 - Keep the production build wrapper's development-provider override intact.
 - Treat listing links and prices as advisory; Riftwatch never purchases items.
 
@@ -132,6 +141,9 @@ Before requesting review, run at least:
 ```sh
 pnpm check
 ```
+
+Security-sensitive changes must also follow [Riftwatch security](docs/SECURITY.md)
+and run `pnpm check:all`.
 
 ## Pull request checklist
 

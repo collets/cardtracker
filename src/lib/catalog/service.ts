@@ -7,15 +7,30 @@ import {
   RIFTBOUND_GAME_ID,
   RIFTBOUND_SINGLES_CATEGORY_ID,
 } from "@/lib/constants";
+import {
+  claimJobLease,
+  completeJobLease,
+  releaseJobLease,
+} from "@/lib/security/job-lease";
 
 export async function synchronizeCatalog(client = new CardTraderClient()) {
-  const [run] = await getDb()
-    .insert(scanRuns)
-    .values({ kind: "catalog" })
-    .returning();
-  if (!run) throw new Error("Could not create catalog run");
-
+  const leaseClaimed = await claimJobLease("catalog");
+  if (!leaseClaimed) {
+    return {
+      status: "skipped" as const,
+      reason: "busy_or_recent" as const,
+      expansions: 0,
+      blueprints: 0,
+    };
+  }
+  let runId: string | undefined;
   try {
+    const [run] = await getDb()
+      .insert(scanRuns)
+      .values({ kind: "catalog" })
+      .returning({ id: scanRuns.id });
+    if (!run) throw new Error("Could not create catalog run");
+    runId = run.id;
     const remoteExpansions = (await client.expansions()).filter(
       (expansion) => expansion.game_id === RIFTBOUND_GAME_ID,
     );
@@ -112,20 +127,28 @@ export async function synchronizeCatalog(client = new CardTraderClient()) {
         },
       })
       .where(eq(scanRuns.id, run.id));
-    return { expansions: remoteExpansions.length, blueprints: blueprintCount };
+    await completeJobLease("catalog");
+    return {
+      status: "succeeded" as const,
+      expansions: remoteExpansions.length,
+      blueprints: blueprintCount,
+    };
   } catch (error) {
-    await getDb()
-      .update(scanRuns)
-      .set({
-        status: "failed",
-        completedAt: new Date(),
-        failureCount: 1,
-        error:
-          error instanceof Error
-            ? error.message.slice(0, 500)
-            : "Unknown catalog error",
-      })
-      .where(eq(scanRuns.id, run.id));
+    if (runId) {
+      await getDb()
+        .update(scanRuns)
+        .set({
+          status: "failed",
+          completedAt: new Date(),
+          failureCount: 1,
+          error:
+            error instanceof Error
+              ? error.message.slice(0, 500)
+              : "Unknown catalog error",
+        })
+        .where(eq(scanRuns.id, runId));
+    }
+    await releaseJobLease("catalog");
     throw error;
   }
 }

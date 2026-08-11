@@ -3,7 +3,8 @@ import { productionEnvironmentIssues } from "@/lib/env";
 
 const validProductionEnvironment = {
   NEXT_PUBLIC_APP_URL: "https://riftwatch.example.com",
-  DATABASE_URL: "postgresql://runtime.example.com/riftwatch",
+  DATABASE_URL:
+    "postgresql://riftwatch_app.project:password@runtime.example.com/riftwatch?sslmode=require",
   DATABASE_URL_DIRECT: "postgresql://direct.example.com/riftwatch",
   AUTH_SECRET: "a".repeat(32),
   AUTH_GOOGLE_ID: "google-client",
@@ -16,7 +17,11 @@ const validProductionEnvironment = {
 
 describe("productionEnvironmentIssues", () => {
   it("accepts the required production configuration", () => {
-    expect(productionEnvironmentIssues(validProductionEnvironment)).toEqual([]);
+    expect(
+      productionEnvironmentIssues(validProductionEnvironment, {
+        requireDirectDatabase: true,
+      }),
+    ).toEqual([]);
   });
 
   it("rejects development authentication and missing deployment values", () => {
@@ -54,5 +59,20 @@ describe("productionEnvironmentIssues", () => {
         requireDirectDatabase: true,
       }),
     ).toContain("DATABASE_URL_DIRECT: required for hosted migrations");
+  });
+
+  it("rejects privileged or non-TLS runtime database connections", () => {
+    const issues = productionEnvironmentIssues({
+      ...validProductionEnvironment,
+      DATABASE_URL: "postgresql://postgres.project:password@db.example.com/db",
+      DATABASE_URL_DIRECT: undefined,
+    });
+
+    expect(issues).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("riftwatch_app"),
+        expect.stringContaining("require SSL"),
+      ]),
+    );
   });
 });

@@ -6,6 +6,8 @@ import {
   integer,
   jsonb,
   pgEnum,
+  pgPolicy,
+  pgRole,
   pgTable,
   primaryKey,
   text,
@@ -21,6 +23,17 @@ import {
   DEFAULT_LANGUAGES,
   DEFAULT_MIN_SAVINGS_CENTS,
 } from "@/lib/constants";
+
+export const riftwatchRuntimeRole = pgRole("riftwatch_runtime");
+
+function runtimePolicy() {
+  return pgPolicy("riftwatch runtime access", {
+    for: "all",
+    to: riftwatchRuntimeRole,
+    using: sql`true`,
+    withCheck: sql`true`,
+  });
+}
 
 export const userRoleEnum = pgEnum("user_role", ["admin", "user"]);
 export const runKindEnum = pgEnum("run_kind", ["catalog", "market", "cleanup"]);
@@ -39,6 +52,14 @@ export const deliveryStatusEnum = pgEnum("delivery_status", [
   "pending",
   "sent",
   "failed",
+]);
+export const auditOutcomeEnum = pgEnum("audit_outcome", ["success", "failure"]);
+export const adminAuditActionEnum = pgEnum("admin_audit_action", [
+  "invitation.create",
+  "invitation.revoke",
+  "user.update",
+  "catalog.synchronize",
+  "scanner.run",
 ]);
 
 export const users = pgTable(
@@ -62,8 +83,11 @@ export const users = pgTable(
       .notNull()
       .defaultNow(),
   },
-  (table) => [uniqueIndex("users_email_unique").on(table.email)],
-);
+  (table) => [
+    uniqueIndex("users_email_unique").on(table.email),
+    runtimePolicy(),
+  ],
+).enableRLS();
 
 export const accounts = pgTable(
   "accounts",
@@ -84,16 +108,24 @@ export const accounts = pgTable(
   },
   (table) => [
     primaryKey({ columns: [table.provider, table.providerAccountId] }),
+    runtimePolicy(),
   ],
-);
+).enableRLS();
 
-export const sessions = pgTable("sessions", {
-  sessionToken: text("session_token").primaryKey(),
-  userId: uuid("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  expires: timestamp("expires", { mode: "date", withTimezone: true }).notNull(),
-});
+export const sessions = pgTable(
+  "sessions",
+  {
+    sessionToken: text("session_token").primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    expires: timestamp("expires", {
+      mode: "date",
+      withTimezone: true,
+    }).notNull(),
+  },
+  () => [runtimePolicy()],
+).enableRLS();
 
 export const verificationTokens = pgTable(
   "verification_tokens",
@@ -105,8 +137,11 @@ export const verificationTokens = pgTable(
       withTimezone: true,
     }).notNull(),
   },
-  (table) => [primaryKey({ columns: [table.identifier, table.token] })],
-);
+  (table) => [
+    primaryKey({ columns: [table.identifier, table.token] }),
+    runtimePolicy(),
+  ],
+).enableRLS();
 
 export const invitations = pgTable(
   "invitations",
@@ -122,47 +157,58 @@ export const invitations = pgTable(
       .notNull()
       .defaultNow(),
   },
-  (table) => [uniqueIndex("invitations_email_unique").on(table.email)],
-);
+  (table) => [
+    uniqueIndex("invitations_email_unique").on(table.email),
+    runtimePolicy(),
+  ],
+).enableRLS();
 
-export const userPreferences = pgTable("user_preferences", {
-  userId: uuid("user_id")
-    .primaryKey()
-    .references(() => users.id, { onDelete: "cascade" }),
-  sellerCountries: text("seller_countries")
-    .array()
-    .notNull()
-    .default(
-      sql`ARRAY['AT','BE','BG','HR','CY','CZ','DK','EE','FI','FR','DE','GR','HU','IS','IE','IT','LV','LI','LT','LU','MT','NL','NO','PL','PT','RO','SK','SI','ES','SE']::text[]`,
-    ),
-  languages: text("languages")
-    .array()
-    .notNull()
-    .default(sql`ARRAY['en']::text[]`),
-  conditions: text("conditions")
-    .array()
-    .notNull()
-    .default(sql`ARRAY['Mint', 'Near Mint']::text[]`),
-  requireZero: boolean("require_zero").notNull().default(false),
-  createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
+export const userPreferences = pgTable(
+  "user_preferences",
+  {
+    userId: uuid("user_id")
+      .primaryKey()
+      .references(() => users.id, { onDelete: "cascade" }),
+    sellerCountries: text("seller_countries")
+      .array()
+      .notNull()
+      .default(
+        sql`ARRAY['AT','BE','BG','HR','CY','CZ','DK','EE','FI','FR','DE','GR','HU','IS','IE','IT','LV','LI','LT','LU','MT','NL','NO','PL','PT','RO','SK','SI','ES','SE']::text[]`,
+      ),
+    languages: text("languages")
+      .array()
+      .notNull()
+      .default(sql`ARRAY['en']::text[]`),
+    conditions: text("conditions")
+      .array()
+      .notNull()
+      .default(sql`ARRAY['Mint', 'Near Mint']::text[]`),
+    requireZero: boolean("require_zero").notNull().default(false),
+    createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  () => [runtimePolicy()],
+).enableRLS();
 
-export const expansions = pgTable("expansions", {
-  id: integer("id").primaryKey(),
-  gameId: integer("game_id").notNull(),
-  code: text("code").notNull(),
-  name: text("name").notNull(),
-  active: boolean("active").notNull().default(true),
-  syncedAt: timestamp("synced_at", {
-    mode: "date",
-    withTimezone: true,
-  }).notNull(),
-});
+export const expansions = pgTable(
+  "expansions",
+  {
+    id: integer("id").primaryKey(),
+    gameId: integer("game_id").notNull(),
+    code: text("code").notNull(),
+    name: text("name").notNull(),
+    active: boolean("active").notNull().default(true),
+    syncedAt: timestamp("synced_at", {
+      mode: "date",
+      withTimezone: true,
+    }).notNull(),
+  },
+  () => [runtimePolicy()],
+).enableRLS();
 
 export const blueprints = pgTable(
   "blueprints",
@@ -193,8 +239,9 @@ export const blueprints = pgTable(
   (table) => [
     index("blueprints_expansion_idx").on(table.expansionId),
     index("blueprints_name_idx").on(table.name),
+    runtimePolicy(),
   ],
-);
+).enableRLS();
 
 export const watches = pgTable(
   "watches",
@@ -235,21 +282,26 @@ export const watches = pgTable(
   (table) => [
     index("watches_user_idx").on(table.userId),
     index("watches_blueprint_idx").on(table.blueprintId),
+    runtimePolicy(),
   ],
-);
+).enableRLS();
 
-export const blueprintScanState = pgTable("blueprint_scan_state", {
-  blueprintId: integer("blueprint_id")
-    .primaryKey()
-    .references(() => blueprints.id, { onDelete: "cascade" }),
-  nextScanAt: timestamp("next_scan_at", { mode: "date", withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  lastScanAt: timestamp("last_scan_at", { mode: "date", withTimezone: true }),
-  leaseUntil: timestamp("lease_until", { mode: "date", withTimezone: true }),
-  failureCount: integer("failure_count").notNull().default(0),
-  lastError: text("last_error"),
-});
+export const blueprintScanState = pgTable(
+  "blueprint_scan_state",
+  {
+    blueprintId: integer("blueprint_id")
+      .primaryKey()
+      .references(() => blueprints.id, { onDelete: "cascade" }),
+    nextScanAt: timestamp("next_scan_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    lastScanAt: timestamp("last_scan_at", { mode: "date", withTimezone: true }),
+    leaseUntil: timestamp("lease_until", { mode: "date", withTimezone: true }),
+    failureCount: integer("failure_count").notNull().default(0),
+    lastError: text("last_error"),
+  },
+  () => [runtimePolicy()],
+).enableRLS();
 
 export const scanRuns = pgTable(
   "scan_runs",
@@ -273,29 +325,36 @@ export const scanRuns = pgTable(
       .default({}),
     error: text("error"),
   },
-  (table) => [index("scan_runs_started_idx").on(table.startedAt)],
-);
+  (table) => [
+    index("scan_runs_started_idx").on(table.startedAt),
+    runtimePolicy(),
+  ],
+).enableRLS();
 
-export const watchMetrics = pgTable("watch_metrics", {
-  watchId: uuid("watch_id")
-    .primaryKey()
-    .references(() => watches.id, { onDelete: "cascade" }),
-  bestProductId: bigint("best_product_id", { mode: "number" }),
-  candidate: jsonb("candidate").$type<MarketListing>(),
-  bestPriceCents: integer("best_price_cents"),
-  currentBaselineCents: integer("current_baseline_cents"),
-  historicalBaselineCents: integer("historical_baseline_cents"),
-  referencePriceCents: integer("reference_price_cents"),
-  eligibleCount: integer("eligible_count").notNull().default(0),
-  discountBps: integer("discount_bps"),
-  confidence: confidenceEnum("confidence"),
-  qualifies: boolean("qualifies").notNull().default(false),
-  rejectionReason: text("rejection_reason"),
-  scannedAt: timestamp("scanned_at", {
-    mode: "date",
-    withTimezone: true,
-  }).notNull(),
-});
+export const watchMetrics = pgTable(
+  "watch_metrics",
+  {
+    watchId: uuid("watch_id")
+      .primaryKey()
+      .references(() => watches.id, { onDelete: "cascade" }),
+    bestProductId: bigint("best_product_id", { mode: "number" }),
+    candidate: jsonb("candidate").$type<MarketListing>(),
+    bestPriceCents: integer("best_price_cents"),
+    currentBaselineCents: integer("current_baseline_cents"),
+    historicalBaselineCents: integer("historical_baseline_cents"),
+    referencePriceCents: integer("reference_price_cents"),
+    eligibleCount: integer("eligible_count").notNull().default(0),
+    discountBps: integer("discount_bps"),
+    confidence: confidenceEnum("confidence"),
+    qualifies: boolean("qualifies").notNull().default(false),
+    rejectionReason: text("rejection_reason"),
+    scannedAt: timestamp("scanned_at", {
+      mode: "date",
+      withTimezone: true,
+    }).notNull(),
+  },
+  () => [runtimePolicy()],
+).enableRLS();
 
 export const priceObservations = pgTable(
   "price_observations",
@@ -320,8 +379,9 @@ export const priceObservations = pgTable(
       table.bucketAt,
     ),
     index("price_observations_bucket_idx").on(table.bucketAt),
+    runtimePolicy(),
   ],
-);
+).enableRLS();
 
 export const alerts = pgTable(
   "alerts",
@@ -361,20 +421,25 @@ export const alerts = pgTable(
       table.productId,
     ),
     index("alerts_watch_state_idx").on(table.watchId, table.state),
+    runtimePolicy(),
   ],
-);
+).enableRLS();
 
-export const telegramChannels = pgTable("telegram_channels", {
-  userId: uuid("user_id")
-    .primaryKey()
-    .references(() => users.id, { onDelete: "cascade" }),
-  chatId: text("chat_id").notNull().unique(),
-  username: text("username"),
-  enabled: boolean("enabled").notNull().default(true),
-  linkedAt: timestamp("linked_at", { mode: "date", withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
+export const telegramChannels = pgTable(
+  "telegram_channels",
+  {
+    userId: uuid("user_id")
+      .primaryKey()
+      .references(() => users.id, { onDelete: "cascade" }),
+    chatId: text("chat_id").notNull().unique(),
+    username: text("username"),
+    enabled: boolean("enabled").notNull().default(true),
+    linkedAt: timestamp("linked_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  () => [runtimePolicy()],
+).enableRLS();
 
 export const telegramLinkTokens = pgTable(
   "telegram_link_tokens",
@@ -395,8 +460,9 @@ export const telegramLinkTokens = pgTable(
   },
   (table) => [
     uniqueIndex("telegram_link_token_hash_unique").on(table.tokenHash),
+    runtimePolicy(),
   ],
-);
+).enableRLS();
 
 export const notificationDeliveries = pgTable(
   "notification_deliveries",
@@ -417,8 +483,65 @@ export const notificationDeliveries = pgTable(
   },
   (table) => [
     uniqueIndex("notification_delivery_dedupe_unique").on(table.dedupeKey),
+    runtimePolicy(),
   ],
-);
+).enableRLS();
+
+export const jobLeases = pgTable(
+  "job_leases",
+  {
+    name: text("name").primaryKey(),
+    leaseUntil: timestamp("lease_until", {
+      mode: "date",
+      withTimezone: true,
+    }),
+    lastCompletedAt: timestamp("last_completed_at", {
+      mode: "date",
+      withTimezone: true,
+    }),
+    updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  () => [runtimePolicy()],
+).enableRLS();
+
+export const adminAuditEvents = pgTable(
+  "admin_audit_events",
+  {
+    id: bigint("id", { mode: "number" })
+      .primaryKey()
+      .generatedAlwaysAsIdentity(),
+    actorUserId: uuid("actor_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    action: adminAuditActionEnum("action").notNull(),
+    targetType: text("target_type").notNull(),
+    targetId: text("target_id"),
+    outcome: auditOutcomeEnum("outcome").notNull(),
+    metadata: jsonb("metadata")
+      .$type<Record<string, string | number | boolean | null>>()
+      .notNull()
+      .default({}),
+    createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("admin_audit_events_created_idx").on(table.createdAt),
+    index("admin_audit_events_actor_idx").on(table.actorUserId),
+    pgPolicy("riftwatch runtime reads audit events", {
+      for: "select",
+      to: riftwatchRuntimeRole,
+      using: sql`true`,
+    }),
+    pgPolicy("riftwatch runtime appends audit events", {
+      for: "insert",
+      to: riftwatchRuntimeRole,
+      withCheck: sql`true`,
+    }),
+  ],
+).enableRLS();
 
 export const userRelations = relations(users, ({ many, one }) => ({
   watches: many(watches),

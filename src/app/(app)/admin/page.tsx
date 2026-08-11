@@ -8,7 +8,14 @@ import {
   updateUserAction,
 } from "@/app/(app)/admin/actions";
 import { getDb } from "@/db";
-import { blueprints, invitations, scanRuns, users, watches } from "@/db/schema";
+import {
+  adminAuditEvents,
+  blueprints,
+  invitations,
+  scanRuns,
+  users,
+  watches,
+} from "@/db/schema";
 import { PageHeading } from "@/components/page-heading";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -33,6 +40,7 @@ export default async function AdminPage() {
     [catalogCount],
     [watchCount],
     [uniqueCount],
+    auditRows,
   ] = await Promise.all([
     getDb().select().from(users).orderBy(users.email),
     getDb().select().from(invitations).orderBy(desc(invitations.createdAt)),
@@ -46,6 +54,12 @@ export default async function AdminPage() {
       .select({ value: countDistinct(watches.blueprintId) })
       .from(watches)
       .where(eq(watches.active, true)),
+    getDb()
+      .select({ event: adminAuditEvents, actorEmail: users.email })
+      .from(adminAuditEvents)
+      .leftJoin(users, eq(users.id, adminAuditEvents.actorUserId))
+      .orderBy(desc(adminAuditEvents.createdAt))
+      .limit(50),
   ]);
   return (
     <>
@@ -253,6 +267,54 @@ export default async function AdminPage() {
                     <td className="pr-6">{run.failureCount}</td>
                     <td className="max-w-xs truncate text-slate-500">
                       {run.error ?? "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle>Administrator audit trail</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <table className="min-w-[760px] text-left text-sm">
+              <thead className="text-xs tracking-wide text-slate-500 uppercase">
+                <tr>
+                  <th className="pb-3">Time</th>
+                  <th className="pb-3">Actor</th>
+                  <th className="pb-3">Action</th>
+                  <th className="pb-3">Target</th>
+                  <th className="pb-3">Outcome</th>
+                </tr>
+              </thead>
+              <tbody>
+                {auditRows.map(({ event, actorEmail }) => (
+                  <tr key={event.id} className="border-t">
+                    <td className="py-3 pr-6">
+                      {event.createdAt.toLocaleString()}
+                    </td>
+                    <td className="max-w-48 truncate pr-6">
+                      {actorEmail ?? "Deleted user"}
+                    </td>
+                    <td className="pr-6">{event.action}</td>
+                    <td className="max-w-52 truncate pr-6 text-slate-400">
+                      {event.targetType}
+                      {event.targetId ? ` · ${event.targetId}` : ""}
+                    </td>
+                    <td>
+                      <Badge
+                        variant={
+                          event.outcome === "success"
+                            ? "success"
+                            : "destructive"
+                        }
+                      >
+                        {event.outcome}
+                      </Badge>
                     </td>
                   </tr>
                 ))}

@@ -54,6 +54,8 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Audit production dependencies
+        run: pnpm audit --prod --audit-level high
       - name: Apply database migrations
         run: pnpm db:migrate
       - name: Seed CI database

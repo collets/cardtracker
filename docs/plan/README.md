@@ -7,6 +7,8 @@ For hands-on setup and contribution workflows, see
 [Development](../DEVELOPMENT.md), [API endpoints](../API.md), and
 [Contributing](../../CONTRIBUTING.md). Hosted account work follows the
 [Production rollout checklist](../PRODUCTION_ROLLOUT.md).
+The implemented trust model and operator controls are documented in
+[Security](../SECURITY.md).
 
 - [Product](product.md): audience, workflows, defaults, and non-goals.
 - [Architecture](architecture.md): components, integrations, and security.

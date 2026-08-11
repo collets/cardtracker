@@ -28,7 +28,7 @@ const packageJson = JSON.parse(
   readFileSync(path.join(root, "package.json"), "utf8"),
 );
 const scripts = new Set(Object.keys(packageJson.scripts ?? {}));
-const pnpmBuiltins = new Set(["add", "exec", "install", "run"]);
+const pnpmBuiltins = new Set(["add", "audit", "exec", "install", "run"]);
 const errors = [];
 
 for (const file of markdownFiles(root)) {

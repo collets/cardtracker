@@ -99,6 +99,152 @@ async function showOperationalStatus() {
   }
 }
 
+async function auditDatabaseSecurity() {
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) fail("DATABASE_URL is required");
+  if (!isLoopback(databaseUrl) && !hasFlag("--allow-hosted")) {
+    fail(
+      "Refusing a hosted database; pass --allow-hosted for this read-only audit",
+    );
+  }
+
+  const sql = postgres(databaseUrl, { max: 1, prepare: false });
+  try {
+    const [status] = await sql<
+      Array<{
+        current_role: string;
+        role_is_safe: boolean;
+        ssl_enabled: boolean;
+        rls_disabled: number;
+        force_rls_disabled: number;
+        unsafe_api_grants: number;
+        unsafe_default_grants: number;
+        mutable_audit_grants: number;
+      }>
+    >`
+      select
+        current_user as current_role,
+        (
+          select not (rolsuper or rolcreaterole or rolcreatedb or rolreplication or rolbypassrls)
+          from pg_roles where rolname = current_user
+        ) as role_is_safe,
+        coalesce((select ssl from pg_stat_ssl where pid = pg_backend_pid()), false) as ssl_enabled,
+        (
+          select count(*)::int
+          from pg_class relation
+          join pg_namespace namespace on namespace.oid = relation.relnamespace
+          where namespace.nspname = 'public'
+            and relation.relkind in ('r', 'p')
+            and relation.relname in (
+              'accounts', 'admin_audit_events', 'alerts', 'blueprint_scan_state',
+              'blueprints', 'expansions', 'invitations', 'job_leases',
+              'notification_deliveries', 'price_observations', 'scan_runs',
+              'sessions', 'telegram_channels', 'telegram_link_tokens',
+              'user_preferences', 'users', 'verification_tokens',
+              'watch_metrics', 'watches'
+            )
+            and not relation.relrowsecurity
+        ) as rls_disabled,
+        (
+          select count(*)::int
+          from pg_class relation
+          join pg_namespace namespace on namespace.oid = relation.relnamespace
+          where namespace.nspname = 'public'
+            and relation.relkind in ('r', 'p')
+            and relation.relname in (
+              'accounts', 'admin_audit_events', 'alerts', 'blueprint_scan_state',
+              'blueprints', 'expansions', 'invitations', 'job_leases',
+              'notification_deliveries', 'price_observations', 'scan_runs',
+              'sessions', 'telegram_channels', 'telegram_link_tokens',
+              'user_preferences', 'users', 'verification_tokens',
+              'watch_metrics', 'watches'
+            )
+            and not relation.relforcerowsecurity
+        ) as force_rls_disabled,
+        (
+          select count(*)::int from (
+            select privilege.grantee
+            from pg_class object
+            join pg_namespace namespace on namespace.oid = object.relnamespace
+            cross join lateral aclexplode(
+              coalesce(
+                object.relacl,
+                acldefault(case when object.relkind = 'S' then 'S'::"char" else 'r'::"char" end, object.relowner)
+              )
+            ) privilege
+            where namespace.nspname = 'public'
+              and object.relkind in ('r', 'p', 'v', 'm', 'S', 'f')
+            union all
+            select privilege.grantee
+            from pg_proc object
+            join pg_namespace namespace on namespace.oid = object.pronamespace
+            cross join lateral aclexplode(
+              coalesce(object.proacl, acldefault('f', object.proowner))
+            ) privilege
+            where namespace.nspname = 'public'
+            union all
+            select privilege.grantee
+            from pg_namespace object
+            cross join lateral aclexplode(
+              coalesce(object.nspacl, acldefault('n', object.nspowner))
+            ) privilege
+            where object.nspname = 'public'
+          ) unsafe_access
+          where unsafe_access.grantee = 0
+            or unsafe_access.grantee in (
+              select oid from pg_roles
+              where rolname in ('anon', 'authenticated', 'service_role')
+            )
+        ) as unsafe_api_grants,
+        (
+          select count(*)::int
+          from pg_default_acl defaults
+          cross join lateral aclexplode(defaults.defaclacl) privilege
+          left join pg_roles grantee on grantee.oid = privilege.grantee
+          where (
+              grantee.rolname in ('anon', 'authenticated', 'service_role')
+              or privilege.grantee = 0
+            )
+            and defaults.defaclnamespace = 'public'::regnamespace
+        ) as unsafe_default_grants,
+        (
+          select count(*)::int
+          from information_schema.table_privileges
+          where table_schema = 'public'
+            and table_name = 'admin_audit_events'
+            and grantee = 'riftwatch_runtime'
+            and privilege_type in ('UPDATE', 'DELETE', 'TRUNCATE')
+        ) as mutable_audit_grants
+    `;
+    if (!status) fail("Database security audit returned no result");
+
+    print("Riftwatch database security audit");
+    print(`Runtime role: ${status.current_role}`);
+    print(`Unprivileged role flags: ${status.role_is_safe ? "yes" : "no"}`);
+    print(`TLS active: ${status.ssl_enabled ? "yes" : "no"}`);
+    print(`Tables without RLS: ${status.rls_disabled}`);
+    print(`Tables without forced RLS: ${status.force_rls_disabled}`);
+    print(`Unsafe PUBLIC/API object grants: ${status.unsafe_api_grants}`);
+    print(`Unsafe PUBLIC/API default grants: ${status.unsafe_default_grants}`);
+    print(`Mutable audit grants: ${status.mutable_audit_grants}`);
+
+    if (
+      !status.role_is_safe ||
+      (!isLoopback(databaseUrl) && !status.ssl_enabled) ||
+      status.rls_disabled > 0 ||
+      status.force_rls_disabled > 0 ||
+      status.unsafe_api_grants > 0 ||
+      status.unsafe_default_grants > 0 ||
+      status.mutable_audit_grants > 0
+    ) {
+      fail("Database security audit failed");
+    }
+    print("Database security audit passed.");
+  } finally {
+    await sql.end();
+  }
+}
+
 async function expectResponse(
   baseUrl: string,
   path: string,
@@ -137,7 +283,24 @@ async function smokeHosted() {
   if (healthBody.status !== "ok" || healthBody.database !== "connected") {
     fail("Health response did not report a connected database");
   }
-  await expectResponse(baseUrl, "/", 200);
+  const landing = await expectResponse(baseUrl, "/", 200);
+  const policy = landing.headers.get("content-security-policy") ?? "";
+  if (
+    !policy.includes("strict-dynamic") ||
+    !policy.includes("frame-ancestors 'none'")
+  ) {
+    fail("Hosted response is missing the enforced strict CSP");
+  }
+  if (landing.headers.get("x-content-type-options") !== "nosniff") {
+    fail("Hosted response is missing X-Content-Type-Options");
+  }
+  const authCsrf = await expectResponse(baseUrl, "/api/auth/csrf", 200);
+  const authCookies = authCsrf.headers.get("set-cookie")?.toLowerCase() ?? "";
+  for (const attribute of ["httponly", "secure", "samesite=lax"]) {
+    if (!authCookies.includes(attribute)) {
+      fail(`Auth.js cookie is missing ${attribute}`);
+    }
+  }
   const protectedPage = await expectResponse(baseUrl, "/dashboard", [303, 307]);
   if (!protectedPage.headers.get("location")?.includes("/sign-in")) {
     fail("Unauthenticated dashboard request did not redirect to sign-in");
@@ -162,6 +325,7 @@ function showHelp() {
 Commands:
   check-env [--require-direct] Validate production configuration without printing values
   status [--allow-hosted]   Print aggregate database operational status
+  security [--allow-hosted] Audit runtime role, TLS, grants, and RLS
   smoke --url <url>         Run safe hosted HTTP checks
         [--run-catalog]     Explicitly invoke the authenticated catalog job
         [--run-scan]        Explicitly invoke the authenticated market job`);
@@ -174,6 +338,9 @@ try {
       break;
     case "status":
       await showOperationalStatus();
+      break;
+    case "security":
+      await auditDatabaseSecurity();
       break;
     case "smoke":
       await smokeHosted();
