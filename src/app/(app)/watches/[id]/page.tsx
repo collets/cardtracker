@@ -12,6 +12,7 @@ import {
   watchMetrics,
 } from "@/db/schema";
 import { CardArt } from "@/components/card-art";
+import { ActionForm, ActionSubmitButton } from "@/components/action-feedback";
 import { PageHeading } from "@/components/page-heading";
 import { PriceChart } from "@/components/price-chart";
 import { Badge } from "@/components/ui/badge";
@@ -27,7 +28,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { requireUser } from "@/lib/auth/guards";
-import { CARDTRADER_WEB_URL, EU_EEA_COUNTRY_CODES } from "@/lib/constants";
+import { getCardTraderBlueprintUrl } from "@/lib/cardtrader/links";
+import { EU_EEA_COUNTRY_CODES } from "@/lib/constants";
 import { formatEuro } from "@/lib/utils";
 
 export default async function WatchPage({
@@ -71,12 +73,12 @@ export default async function WatchPage({
           .filter(Boolean)
           .join(" · ")}
         actions={
-          <form action={scanWatchAction}>
+          <ActionForm action={scanWatchAction}>
             <input type="hidden" name="watchId" value={watchId} />
-            <Button type="submit" variant="outline">
+            <ActionSubmitButton variant="outline" pendingLabel="Scanning…">
               <RefreshCw className="size-4" /> Scan now
-            </Button>
-          </form>
+            </ActionSubmitButton>
+          </ActionForm>
         }
       />
       <div className="grid gap-6 lg:grid-cols-[220px_1fr]">
@@ -151,7 +153,11 @@ export default async function WatchPage({
                   {candidate.foil ? "foil" : "non-foil"} · shipping excluded
                 </p>
                 <Button asChild className="sm:col-span-3">
-                  <Link href={CARDTRADER_WEB_URL} target="_blank">
+                  <Link
+                    href={getCardTraderBlueprintUrl(row.card.id)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
                     Open CardTrader <ExternalLink className="size-4" />
                   </Link>
                 </Button>
@@ -163,7 +169,7 @@ export default async function WatchPage({
               <CardTitle>Watch filters</CardTitle>
             </CardHeader>
             <CardContent>
-              <form
+              <ActionForm
                 action={updateWatchAction}
                 className="grid gap-6 sm:grid-cols-2"
               >
@@ -316,10 +322,13 @@ export default async function WatchPage({
                     ))}
                   </div>
                 </fieldset>
-                <Button type="submit" className="sm:col-span-2">
+                <ActionSubmitButton
+                  className="sm:col-span-2"
+                  pendingLabel="Saving…"
+                >
                   Save filters
-                </Button>
-              </form>
+                </ActionSubmitButton>
+              </ActionForm>
             </CardContent>
           </Card>
         </div>

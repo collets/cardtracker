@@ -5,12 +5,13 @@ import { markAlertReadAction } from "@/app/(app)/actions";
 import { getDb } from "@/db";
 import { alerts, blueprints, expansions, watches } from "@/db/schema";
 import { CardArt } from "@/components/card-art";
+import { ActionForm, ActionSubmitButton } from "@/components/action-feedback";
 import { PageHeading } from "@/components/page-heading";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { requireUser } from "@/lib/auth/guards";
-import { CARDTRADER_WEB_URL } from "@/lib/constants";
+import { getCardTraderBlueprintUrl } from "@/lib/cardtrader/links";
 import { formatEuro } from "@/lib/utils";
 
 export default async function AlertsPage() {
@@ -86,17 +87,25 @@ export default async function AlertsPage() {
                 </div>
                 <div className="col-span-2 flex gap-2 sm:col-span-1">
                   <Button asChild size="sm">
-                    <Link href={CARDTRADER_WEB_URL} target="_blank">
+                    <Link
+                      href={getCardTraderBlueprintUrl(card.id)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
                       CardTrader <ExternalLink className="size-3.5" />
                     </Link>
                   </Button>
                   {!alert.readAt ? (
-                    <form action={markAlertReadAction}>
+                    <ActionForm action={markAlertReadAction}>
                       <input type="hidden" name="alertId" value={alert.id} />
-                      <Button type="submit" size="sm" variant="ghost">
+                      <ActionSubmitButton
+                        size="sm"
+                        variant="ghost"
+                        pendingLabel="Saving…"
+                      >
                         Mark read
-                      </Button>
-                    </form>
+                      </ActionSubmitButton>
+                    </ActionForm>
                   ) : null}
                 </div>
               </CardContent>

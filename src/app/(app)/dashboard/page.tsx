@@ -9,12 +9,17 @@ import {
   watches,
   watchMetrics,
 } from "@/db/schema";
-import { removeWatchAction, scanWatchAction } from "@/app/(app)/actions";
+import {
+  removeWatchAction,
+  scanAllWatchesAction,
+  scanWatchAction,
+} from "@/app/(app)/actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { CardArt } from "@/components/card-art";
 import { PageHeading } from "@/components/page-heading";
+import { ActionForm, ActionSubmitButton } from "@/components/action-feedback";
 import { requireUser } from "@/lib/auth/guards";
 import { formatEuro } from "@/lib/utils";
 
@@ -53,11 +58,24 @@ export default async function DashboardPage() {
         title="Market overview"
         description={`${rows.length} active watches · prices exclude shipping`}
         actions={
-          <Button asChild>
-            <Link href="/cards">
-              <Plus className="size-4" /> Track a card
-            </Link>
-          </Button>
+          <>
+            {rows.length > 0 ? (
+              <ActionForm action={scanAllWatchesAction}>
+                <ActionSubmitButton
+                  variant="outline"
+                  pendingLabel="Scanning all…"
+                  title="Refresh prices for every active watch"
+                >
+                  <RefreshCw className="size-4" /> Scan all
+                </ActionSubmitButton>
+              </ActionForm>
+            ) : null}
+            <Button asChild>
+              <Link href="/cards">
+                <Plus className="size-4" /> Track a card
+              </Link>
+            </Button>
+          </>
         }
       />
       {unreadDeals.length ? (
@@ -140,23 +158,27 @@ export default async function DashboardPage() {
                     <Button asChild size="sm" variant="outline">
                       <Link href={`/watches/${watch.id}`}>Details</Link>
                     </Button>
-                    <form action={scanWatchAction}>
+                    <ActionForm action={scanWatchAction}>
                       <input type="hidden" name="watchId" value={watch.id} />
-                      <Button size="sm" variant="ghost" type="submit">
-                        <RefreshCw className="size-3.5" /> Scan
-                      </Button>
-                    </form>
-                    <form action={removeWatchAction} className="ml-auto">
-                      <input type="hidden" name="watchId" value={watch.id} />
-                      <Button
+                      <ActionSubmitButton
                         size="sm"
                         variant="ghost"
-                        type="submit"
+                        pendingLabel="Scanning…"
+                      >
+                        <RefreshCw className="size-3.5" /> Scan
+                      </ActionSubmitButton>
+                    </ActionForm>
+                    <ActionForm action={removeWatchAction} className="ml-auto">
+                      <input type="hidden" name="watchId" value={watch.id} />
+                      <ActionSubmitButton
+                        size="sm"
+                        variant="ghost"
                         aria-label={`Remove ${card.name}`}
+                        pendingLabel="Removing…"
                       >
                         <Trash2 className="size-3.5" />
-                      </Button>
-                    </form>
+                      </ActionSubmitButton>
+                    </ActionForm>
                   </div>
                 </div>
               </CardContent>

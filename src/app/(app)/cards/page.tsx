@@ -1,6 +1,15 @@
 import Link from "next/link";
+import { eq } from "drizzle-orm";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import { getDb } from "@/db";
+import { userPreferences } from "@/db/schema";
 import { CatalogToolbar } from "@/components/catalog-filters";
+import {
+  CatalogCardActions,
+  CatalogPageSelection,
+  CatalogSelectionProvider,
+  type CatalogSelectedCard,
+} from "@/components/catalog-selection";
 import { CardArt } from "@/components/card-art";
 import { PageHeading } from "@/components/page-heading";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +32,7 @@ import {
   searchCatalog,
   type CatalogExpansionOption,
 } from "@/lib/catalog/search";
+import { requireUser } from "@/lib/auth/guards";
 
 const LANGUAGE_LABELS: Record<string, string> = {
   en: "English",
@@ -66,12 +76,34 @@ export default async function CardsPage({
   searchParams: Promise<CatalogSearchParams>;
 }) {
   const requestedFilters = parseCatalogFilters(await searchParams);
-  const result = await searchCatalog(requestedFilters);
+  const user = await requireUser();
+  const [result, preferences] = await Promise.all([
+    searchCatalog(requestedFilters),
+    getDb()
+      .select()
+      .from(userPreferences)
+      .where(eq(userPreferences.userId, user.id))
+      .limit(1)
+      .then((rows) => rows[0]),
+  ]);
   const filters = { ...requestedFilters, page: result.page };
   const firstResult = result.total
     ? (result.page - 1) * filters.perPage + 1
     : 0;
   const lastResult = Math.min(result.page * filters.perPage, result.total);
+  const selectionCards: CatalogSelectedCard[] = result.rows.map(
+    ({ card, expansion }) => ({
+      id: card.id,
+      name: card.name,
+      printing: [
+        expansion.code.toUpperCase(),
+        card.collectorNumber ? `#${card.collectorNumber}` : null,
+        card.version?.trim() || "Standard",
+      ]
+        .filter(Boolean)
+        .join(" · "),
+    }),
+  );
 
   return (
     <>
@@ -81,133 +113,147 @@ export default async function CardsPage({
         description="Search and filter every active CardTrader printing. Open a card to turn the exact printing into a price watch."
       />
 
-      <CatalogToolbar
-        filters={filters}
-        expansions={result.expansionOptions}
-        rarities={result.rarityOptions}
-      />
-      <ActiveFilters filters={filters} expansions={result.expansionOptions} />
+      <CatalogSelectionProvider>
+        <CatalogToolbar
+          filters={filters}
+          expansions={result.expansionOptions}
+          rarities={result.rarityOptions}
+          watchDefaults={{
+            languages: preferences?.languages,
+            conditions: preferences?.conditions,
+            requireZero: preferences?.requireZero,
+          }}
+        />
+        <ActiveFilters filters={filters} expansions={result.expansionOptions} />
 
-      <section className="min-w-0" aria-label="Catalog results">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 text-sm">
-          <p className="text-slate-400" aria-live="polite">
-            {result.total ? (
-              <>
-                Showing{" "}
-                <span className="text-slate-200">
-                  {firstResult}–{lastResult}
-                </span>{" "}
-                of <span className="text-slate-200">{result.total}</span>{" "}
-                printings
-              </>
-            ) : (
-              "No matching printings"
-            )}
-          </p>
-          {result.totalPages > 1 ? (
-            <p className="text-xs text-slate-500">
-              Page {result.page} of {result.totalPages}
-            </p>
-          ) : null}
-        </div>
-
-        {result.rows.length === 0 ? (
-          <Card>
-            <CardContent className="py-16 text-center">
-              <p className="text-sm text-slate-300">
-                No cards match this combination of filters.
+        <section className="min-w-0" aria-label="Catalog results">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2 text-sm">
+            <div className="space-y-2">
+              <p className="text-slate-400" aria-live="polite">
+                {result.total ? (
+                  <>
+                    Showing{" "}
+                    <span className="text-slate-200">
+                      {firstResult}–{lastResult}
+                    </span>{" "}
+                    of <span className="text-slate-200">{result.total}</span>{" "}
+                    printings
+                  </>
+                ) : (
+                  "No matching printings"
+                )}
               </p>
-              <p className="mt-2 text-xs text-slate-500">
-                Try removing a rarity, language, or printing constraint.
+              {selectionCards.length ? (
+                <CatalogPageSelection cards={selectionCards} />
+              ) : null}
+            </div>
+            {result.totalPages > 1 ? (
+              <p className="text-xs text-slate-500">
+                Page {result.page} of {result.totalPages}
               </p>
-              <Link
-                href="/cards"
-                className={buttonVariants({
-                  variant: "outline",
-                  className: "mt-5",
-                })}
-              >
-                Clear all filters
-              </Link>
-            </CardContent>
-          </Card>
-        ) : (
-          <div
-            className={`grid gap-4 ${CATALOG_GRID_CLASSES[filters.columns]}`}
-            data-card-columns={filters.columns}
-          >
-            {result.rows.map(({ card, expansion }) => {
-              const languages = getBlueprintLanguageCodes(
-                card.editableProperties,
-              );
-              const finish = getBlueprintFinishLabel(card.editableProperties);
-              const printingCode = [
-                expansion.code.toUpperCase(),
-                card.collectorNumber ? `#${card.collectorNumber}` : null,
-              ]
-                .filter(Boolean)
-                .join(" · ");
-
-              return (
-                <Link
-                  key={card.id}
-                  href={`/cards/${card.id}`}
-                  className="group"
-                >
-                  <Card className="h-full overflow-hidden transition group-hover:-translate-y-1 group-hover:border-cyan-300/30">
-                    <CardArt
-                      src={card.imageUrl}
-                      alt={card.name}
-                      sizes="(max-width: 359px) 100vw, (max-width: 639px) 50vw, (max-width: 1023px) 33vw, (max-width: 1535px) 25vw, 12rem"
-                      className="aspect-[0.716] rounded-none"
-                    />
-                    <CardContent className="flex h-52 flex-col p-3">
-                      <p className="line-clamp-2 text-sm font-medium">
-                        {card.name}
-                      </p>
-                      <p className="mt-1 line-clamp-1 text-xs text-cyan-200">
-                        {expansion.name}
-                      </p>
-                      <p
-                        className="mt-1 line-clamp-2 text-xs leading-5 text-slate-400"
-                        title={card.version ?? "Standard printing"}
-                      >
-                        {card.version?.trim() || "Standard printing"}
-                      </p>
-
-                      <div className="mt-auto space-y-2 pt-3">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <Badge variant="muted">{printingCode}</Badge>
-                          {card.rarity ? (
-                            <Badge variant="default">{card.rarity}</Badge>
-                          ) : null}
-                        </div>
-                        <p
-                          className="line-clamp-1 text-[11px] text-slate-500"
-                          title={
-                            languages.length > 0
-                              ? `Available listing languages: ${languages.map(formatLanguageCode).join(", ")}`
-                              : undefined
-                          }
-                        >
-                          {languages.length > 0
-                            ? `Lang: ${languages.map(formatCompactLanguageCode).join(" / ")}`
-                            : "Language: Not specified"}
-                        </p>
-                        <p className="line-clamp-1 text-[11px] text-slate-500">
-                          Finish: {finish ?? "Fixed by printing"}
-                        </p>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </Link>
-              );
-            })}
+            ) : null}
           </div>
-        )}
 
-        <CatalogPagination filters={filters} totalPages={result.totalPages} />
-      </section>
+          {result.rows.length === 0 ? (
+            <Card>
+              <CardContent className="py-16 text-center">
+                <p className="text-sm text-slate-300">
+                  No cards match this combination of filters.
+                </p>
+                <p className="mt-2 text-xs text-slate-500">
+                  Try removing a rarity, language, or printing constraint.
+                </p>
+                <Link
+                  href="/cards"
+                  className={buttonVariants({
+                    variant: "outline",
+                    className: "mt-5",
+                  })}
+                >
+                  Clear all filters
+                </Link>
+              </CardContent>
+            </Card>
+          ) : (
+            <div
+              className={`grid gap-4 ${CATALOG_GRID_CLASSES[filters.columns]}`}
+              data-card-columns={filters.columns}
+            >
+              {result.rows.map(({ card, expansion }) => {
+                const languages = getBlueprintLanguageCodes(
+                  card.editableProperties,
+                );
+                const finish = getBlueprintFinishLabel(card.editableProperties);
+                const printingCode = [
+                  expansion.code.toUpperCase(),
+                  card.collectorNumber ? `#${card.collectorNumber}` : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ");
+
+                return (
+                  <Card
+                    key={card.id}
+                    className="group relative h-full overflow-hidden transition hover:-translate-y-1 hover:border-cyan-300/30"
+                  >
+                    <CatalogCardActions
+                      card={selectionCards.find((item) => item.id === card.id)!}
+                    />
+                    <Link href={`/cards/${card.id}`} className="block h-full">
+                      <CardArt
+                        src={card.imageUrl}
+                        alt={card.name}
+                        sizes="(max-width: 359px) 100vw, (max-width: 639px) 50vw, (max-width: 1023px) 33vw, (max-width: 1535px) 25vw, 12rem"
+                        className="aspect-[0.716] rounded-none"
+                      />
+                      <CardContent className="flex h-52 flex-col p-3">
+                        <p className="line-clamp-2 text-sm font-medium">
+                          {card.name}
+                        </p>
+                        <p className="mt-1 line-clamp-1 text-xs text-cyan-200">
+                          {expansion.name}
+                        </p>
+                        <p
+                          className="mt-1 line-clamp-2 text-xs leading-5 text-slate-400"
+                          title={card.version ?? "Standard printing"}
+                        >
+                          {card.version?.trim() || "Standard printing"}
+                        </p>
+
+                        <div className="mt-auto space-y-2 pt-3">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <Badge variant="muted">{printingCode}</Badge>
+                            {card.rarity ? (
+                              <Badge variant="default">{card.rarity}</Badge>
+                            ) : null}
+                          </div>
+                          <p
+                            className="line-clamp-1 text-[11px] text-slate-500"
+                            title={
+                              languages.length > 0
+                                ? `Available listing languages: ${languages.map(formatLanguageCode).join(", ")}`
+                                : undefined
+                            }
+                          >
+                            {languages.length > 0
+                              ? `Lang: ${languages.map(formatCompactLanguageCode).join(" / ")}`
+                              : "Language: Not specified"}
+                          </p>
+                          <p className="line-clamp-1 text-[11px] text-slate-500">
+                            Finish: {finish ?? "Fixed by printing"}
+                          </p>
+                        </div>
+                      </CardContent>
+                    </Link>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+
+          <CatalogPagination filters={filters} totalPages={result.totalPages} />
+        </section>
+      </CatalogSelectionProvider>
     </>
   );
 }

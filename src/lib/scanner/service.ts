@@ -3,6 +3,7 @@ import { and, asc, eq, gt, inArray, lt, or, sql } from "drizzle-orm";
 import { getDb, getSql } from "@/db";
 import {
   alerts,
+  blueprints,
   blueprintScanState,
   priceObservations,
   scanRuns,
@@ -15,15 +16,17 @@ import { evaluateDeal } from "@/lib/deals/evaluate";
 import type { WatchFilters } from "@/lib/deals/types";
 import { getServerEnv } from "@/lib/env";
 import {
+  fetchMarketplacePlan,
+  planMarketplaceFetches,
+  type BlueprintMarketplaceProductClient,
+  type MarketplaceProductClient,
+} from "@/lib/scanner/marketplace";
+import {
   dispatchPendingNotifications,
   queueTelegramDelivery,
 } from "@/lib/telegram/service";
 
-export interface MarketplaceProductClient {
-  marketplaceProducts(
-    blueprintId: number,
-  ): Promise<Awaited<ReturnType<CardTraderClient["marketplaceProducts"]>>>;
-}
+const BLUEPRINT_PROCESS_CONCURRENCY = 5;
 
 function hourBucket(date: Date) {
   const value = new Date(date);
@@ -65,21 +68,30 @@ export async function claimDueBlueprints(
   return rows.map((row) => row.blueprint_id);
 }
 
-export async function scanBlueprint(
+async function recordBlueprintFailure(blueprintId: number, error: unknown) {
+  await getDb()
+    .update(blueprintScanState)
+    .set({
+      leaseUntil: null,
+      failureCount: sql`${blueprintScanState.failureCount} + 1`,
+      lastError: safeError(error),
+      nextScanAt: new Date(Date.now() + 5 * 60 * 1000),
+    })
+    .where(eq(blueprintScanState.blueprintId, blueprintId));
+}
+
+async function processBlueprintListings(
   blueprintId: number,
-  client: MarketplaceProductClient = new CardTraderClient(),
+  listings: Awaited<ReturnType<CardTraderClient["marketplaceProducts"]>>,
 ): Promise<{ watches: number; alerts: number }> {
   try {
-    const [listings, watchRows] = await Promise.all([
-      client.marketplaceProducts(blueprintId),
-      getDb()
-        .select({ watch: watches, preferences: userPreferences })
-        .from(watches)
-        .leftJoin(userPreferences, eq(userPreferences.userId, watches.userId))
-        .where(
-          and(eq(watches.blueprintId, blueprintId), eq(watches.active, true)),
-        ),
-    ]);
+    const watchRows = await getDb()
+      .select({ watch: watches, preferences: userPreferences })
+      .from(watches)
+      .leftJoin(userPreferences, eq(userPreferences.userId, watches.userId))
+      .where(
+        and(eq(watches.blueprintId, blueprintId), eq(watches.active, true)),
+      );
     const now = new Date();
     let createdAlerts = 0;
 
@@ -285,56 +297,122 @@ export async function scanBlueprint(
       .where(eq(blueprintScanState.blueprintId, blueprintId));
     return { watches: watchRows.length, alerts: createdAlerts };
   } catch (error) {
-    await getDb()
-      .update(blueprintScanState)
-      .set({
-        leaseUntil: null,
-        failureCount: sql`${blueprintScanState.failureCount} + 1`,
-        lastError: safeError(error),
-        nextScanAt: new Date(Date.now() + 5 * 60 * 1000),
-      })
-      .where(eq(blueprintScanState.blueprintId, blueprintId));
+    await recordBlueprintFailure(blueprintId, error);
     throw error;
   }
+}
+
+export async function scanBlueprint(
+  blueprintId: number,
+  client: BlueprintMarketplaceProductClient = new CardTraderClient(),
+): Promise<{ watches: number; alerts: number }> {
+  let listings: Awaited<ReturnType<CardTraderClient["marketplaceProducts"]>>;
+  try {
+    listings = await client.marketplaceProducts(blueprintId);
+  } catch (error) {
+    await recordBlueprintFailure(blueprintId, error);
+    throw error;
+  }
+  return processBlueprintListings(blueprintId, listings);
 }
 
 export async function runMarketScanner(
   options: {
     explicitBlueprintId?: number;
+    explicitBlueprintIds?: readonly number[];
     client?: MarketplaceProductClient;
     dispatchNotifications?: () => Promise<{ sent: number; failed: number }>;
   } = {},
 ) {
+  if (
+    options.explicitBlueprintId !== undefined &&
+    options.explicitBlueprintIds !== undefined
+  ) {
+    throw new Error("Choose either one explicit blueprint or a blueprint list");
+  }
   const [run] = await getDb()
     .insert(scanRuns)
     .values({ kind: "market" })
     .returning();
   if (!run) throw new Error("Could not create market scan run");
-  const blueprintIds = options.explicitBlueprintId
-    ? [options.explicitBlueprintId]
-    : await claimDueBlueprints();
+  const explicitlyRequestedBlueprintIds =
+    options.explicitBlueprintId !== undefined
+      ? [options.explicitBlueprintId]
+      : options.explicitBlueprintIds !== undefined
+        ? [...new Set(options.explicitBlueprintIds)]
+        : null;
+  const blueprintIds =
+    explicitlyRequestedBlueprintIds ?? (await claimDueBlueprints());
   let successes = 0;
   let failures = 0;
   let watchCount = 0;
   let alertCount = 0;
   const client = options.client ?? new CardTraderClient();
+  let expansionFetches = 0;
+  let blueprintFetches = 0;
 
-  for (let index = 0; index < blueprintIds.length; index += 5) {
-    const batch = blueprintIds.slice(index, index + 5);
-    const outcomes = await Promise.allSettled(
-      batch.map((id) => scanBlueprint(id, client)),
-    );
-    for (const outcome of outcomes) {
-      if (outcome.status === "fulfilled") {
-        successes += 1;
-        watchCount += outcome.value.watches;
-        alertCount += outcome.value.alerts;
-      } else {
-        failures += 1;
-      }
+  if (options.explicitBlueprintId !== undefined) {
+    blueprintFetches = 1;
+    const outcome = await Promise.allSettled([
+      scanBlueprint(options.explicitBlueprintId, client),
+    ]);
+    const result = outcome[0];
+    if (result?.status === "fulfilled") {
+      successes = 1;
+      watchCount = result.value.watches;
+      alertCount = result.value.alerts;
+    } else {
+      failures = 1;
     }
-    if (index + 5 < blueprintIds.length) {
-      await new Promise((resolve) => setTimeout(resolve, 1_000));
+  } else if (blueprintIds.length > 0) {
+    const blueprintRows = await getDb()
+      .select({
+        blueprintId: blueprints.id,
+        expansionId: blueprints.expansionId,
+      })
+      .from(blueprints)
+      .where(inArray(blueprints.id, blueprintIds));
+    const fetchResult = await fetchMarketplacePlan(
+      planMarketplaceFetches(blueprintRows),
+      client,
+    );
+    expansionFetches = fetchResult.expansionFetches;
+    blueprintFetches = fetchResult.blueprintFetches;
+
+    for (const [blueprintId, error] of fetchResult.failures) {
+      await recordBlueprintFailure(blueprintId, error);
+      failures += 1;
+    }
+
+    const fetchedBlueprintIds = blueprintIds.filter((blueprintId) =>
+      fetchResult.listingsByBlueprint.has(blueprintId),
+    );
+    for (
+      let index = 0;
+      index < fetchedBlueprintIds.length;
+      index += BLUEPRINT_PROCESS_CONCURRENCY
+    ) {
+      const batch = fetchedBlueprintIds.slice(
+        index,
+        index + BLUEPRINT_PROCESS_CONCURRENCY,
+      );
+      const outcomes = await Promise.allSettled(
+        batch.map((blueprintId) =>
+          processBlueprintListings(
+            blueprintId,
+            fetchResult.listingsByBlueprint.get(blueprintId) ?? [],
+          ),
+        ),
+      );
+      for (const outcome of outcomes) {
+        if (outcome.status === "fulfilled") {
+          successes += 1;
+          watchCount += outcome.value.watches;
+          alertCount += outcome.value.alerts;
+        } else {
+          failures += 1;
+        }
+      }
     }
   }
 
@@ -346,7 +424,14 @@ export async function runMarketScanner(
       claimedCount: blueprintIds.length,
       successCount: successes,
       failureCount: failures,
-      details: { watches: watchCount, alerts: alertCount },
+      details: {
+        watches: watchCount,
+        alerts: alertCount,
+        marketplaceFetches: {
+          expansions: expansionFetches,
+          blueprints: blueprintFetches,
+        },
+      },
       error: failures > 0 ? `${failures} blueprint scans failed` : null,
     })
     .where(eq(scanRuns.id, run.id));
@@ -358,7 +443,31 @@ export async function runMarketScanner(
     failures,
     watches: watchCount,
     alerts: alertCount,
+    marketplaceFetches: {
+      expansions: expansionFetches,
+      blueprints: blueprintFetches,
+    },
   };
+}
+
+export async function scanUserWatchlist(
+  userId: string,
+  options: {
+    client?: MarketplaceProductClient;
+    dispatchNotifications?: () => Promise<{ sent: number; failed: number }>;
+  } = {},
+) {
+  const rows = await getDb()
+    .selectDistinct({ blueprintId: watches.blueprintId })
+    .from(watches)
+    .where(and(eq(watches.userId, userId), eq(watches.active, true)));
+  if (rows.length === 0) return null;
+
+  return runMarketScanner({
+    explicitBlueprintIds: rows.map((row) => row.blueprintId),
+    client: options.client,
+    dispatchNotifications: options.dispatchNotifications,
+  });
 }
 
 export async function pruneOperationalData(

@@ -4,8 +4,8 @@ import { addWatchAction } from "@/app/(app)/actions";
 import { getDb } from "@/db";
 import { blueprints, expansions, userPreferences } from "@/db/schema";
 import { CardArt } from "@/components/card-art";
+import { ActionSubmitButton } from "@/components/action-feedback";
 import { PageHeading } from "@/components/page-heading";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -175,9 +175,12 @@ export default async function CardPage({
                 altered, risky, and unavailable listings are always excluded.
                 Shipping is not included.
               </p>
-              <Button type="submit" className="sm:col-span-2">
+              <ActionSubmitButton
+                className="sm:col-span-2"
+                pendingLabel="Adding…"
+              >
                 Add to watchlist
-              </Button>
+              </ActionSubmitButton>
             </form>
           </CardContent>
         </Card>

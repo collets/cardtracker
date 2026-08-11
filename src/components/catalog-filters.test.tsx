@@ -8,8 +8,14 @@ import {
   screen,
   within,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("@/app/(app)/actions", () => ({
+  bulkAddWatchesAction: vi.fn(),
+  quickAddWatchAction: vi.fn(),
+}));
 import { CatalogToolbar } from "@/components/catalog-filters";
+import { CatalogSelectionProvider } from "@/components/catalog-selection";
 import { parseCatalogFilters } from "@/lib/catalog/filters";
 
 const expansions = [
@@ -21,17 +27,26 @@ const expansions = [
   },
 ];
 
+function toolbar(
+  filters = parseCatalogFilters({}),
+  rarities = [] as Array<{ value: string; count: number }>,
+) {
+  return (
+    <CatalogSelectionProvider>
+      <CatalogToolbar
+        filters={filters}
+        expansions={expansions}
+        rarities={rarities}
+      />
+    </CatalogSelectionProvider>
+  );
+}
+
 afterEach(cleanup);
 
 describe("catalog filter interface", () => {
   it("links density controls to the adjacent supported column counts", () => {
-    render(
-      <CatalogToolbar
-        filters={parseCatalogFilters({})}
-        expansions={expansions}
-        rarities={[]}
-      />,
-    );
+    render(toolbar());
 
     expect(
       screen.getByRole("group", { name: /up to 8 cards per row/i }),
@@ -45,13 +60,7 @@ describe("catalog filter interface", () => {
   });
 
   it("keeps the advanced form unmounted until the filter drawer opens", () => {
-    render(
-      <CatalogToolbar
-        filters={parseCatalogFilters({})}
-        expansions={expansions}
-        rarities={[{ value: "Epic", count: 147 }]}
-      />,
-    );
+    render(toolbar(parseCatalogFilters({}), [{ value: "Epic", count: 147 }]));
 
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Filters" }));
@@ -68,15 +77,13 @@ describe("catalog filter interface", () => {
 
   it("reinitializes open drawer controls when URL filters reset", () => {
     const view = render(
-      <CatalogToolbar
-        filters={parseCatalogFilters({
+      toolbar(
+        parseCatalogFilters({
           expansion: "4521",
           finish: "foil",
           version: "Alternate Art",
-        })}
-        expansions={expansions}
-        rarities={[]}
-      />,
+        }),
+      ),
     );
     fireEvent.click(screen.getByRole("button", { name: /Filters/ }));
 
@@ -91,13 +98,7 @@ describe("catalog filter interface", () => {
       "Alternate Art",
     );
 
-    view.rerender(
-      <CatalogToolbar
-        filters={parseCatalogFilters({})}
-        expansions={expansions}
-        rarities={[]}
-      />,
-    );
+    view.rerender(toolbar());
 
     dialog = screen.getByRole("dialog");
     expect(

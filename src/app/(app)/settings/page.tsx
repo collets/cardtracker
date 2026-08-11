@@ -8,8 +8,8 @@ import {
 import { getDb } from "@/db";
 import { telegramChannels, userPreferences, users } from "@/db/schema";
 import { PageHeading } from "@/components/page-heading";
+import { ActionForm, ActionSubmitButton } from "@/components/action-feedback";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -67,7 +67,7 @@ export default async function SettingsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <form action={savePreferencesAction} className="space-y-6">
+            <ActionForm action={savePreferencesAction} className="space-y-6">
               <div>
                 <Label>Seller countries</Label>
                 <div className="mt-3 grid max-h-56 grid-cols-3 gap-2 overflow-auto rounded-xl border p-3 sm:grid-cols-4">
@@ -131,8 +131,10 @@ export default async function SettingsPage() {
                 label="Require CardTrader Zero by default"
                 defaultChecked={preferences?.requireZero}
               />
-              <Button type="submit">Save defaults</Button>
-            </form>
+              <ActionSubmitButton pendingLabel="Saving…">
+                Save defaults
+              </ActionSubmitButton>
+            </ActionForm>
           </CardContent>
         </Card>
         <Card>
@@ -162,17 +164,20 @@ export default async function SettingsPage() {
                     : `chat ${telegram.chatId}`}
                   .
                 </p>
-                <form action={disconnectTelegramAction} className="mt-5">
-                  <Button type="submit" variant="outline">
+                <ActionForm action={disconnectTelegramAction} className="mt-5">
+                  <ActionSubmitButton
+                    variant="outline"
+                    pendingLabel="Disconnecting…"
+                  >
                     <Unplug className="size-4" /> Disconnect
-                  </Button>
-                </form>
+                  </ActionSubmitButton>
+                </ActionForm>
               </div>
             ) : (
               <form action={createTelegramLinkAction}>
-                <Button type="submit">
+                <ActionSubmitButton pendingLabel="Opening…">
                   Open Telegram bot <ExternalLink className="size-4" />
-                </Button>
+                </ActionSubmitButton>
                 <p className="mt-3 text-xs leading-5 text-slate-500">
                   The secure connection link expires after ten minutes and can
                   be used only once.

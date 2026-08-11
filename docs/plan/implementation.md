@@ -19,6 +19,8 @@
 - [x] Telegram linking and idempotent delivery.
 - [x] Admin health and capacity controls.
 - [x] Authenticated browser coverage and scanner/database integration tests.
+- [x] Consistent mutation feedback, persistent catalog selection, and atomic
+      bulk watch creation.
 - [x] Production diagnostics, hosted smoke tooling, and operator runbook.
 - [x] Bounded marketplace calibration workflow with aggregate-only reporting.
 - [ ] Hosted smoke test and five-minute production rollout.

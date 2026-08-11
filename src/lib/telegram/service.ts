@@ -11,7 +11,7 @@ import {
   telegramLinkTokens,
   watches,
 } from "@/db/schema";
-import { CARDTRADER_WEB_URL } from "@/lib/constants";
+import { getCardTraderBlueprintUrl } from "@/lib/cardtrader/links";
 import { getServerEnv, requireEnv } from "@/lib/env";
 import { formatEuro } from "@/lib/utils";
 
@@ -133,6 +133,7 @@ async function sendTelegramMessage(
   chatId: string,
   text: string,
   fetchImpl: typeof fetch,
+  cardTraderUrl?: string,
 ) {
   const token = requireEnv("TELEGRAM_BOT_TOKEN");
   const response = await fetchImpl(
@@ -144,11 +145,15 @@ async function sendTelegramMessage(
         chat_id: chatId,
         text,
         disable_web_page_preview: true,
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: "Open CardTrader", url: CARDTRADER_WEB_URL }],
-          ],
-        },
+        ...(cardTraderUrl
+          ? {
+              reply_markup: {
+                inline_keyboard: [
+                  [{ text: "Open CardTrader", url: cardTraderUrl }],
+                ],
+              },
+            }
+          : {}),
       }),
       cache: "no-store",
     },
@@ -168,6 +173,7 @@ export async function dispatchPendingNotifications(
     .select({
       delivery: notificationDeliveries,
       alert: alerts,
+      blueprintId: blueprints.id,
       cardName: blueprints.name,
       cardVersion: blueprints.version,
       chatId: telegramChannels.chatId,
@@ -206,7 +212,12 @@ export async function dispatchPendingNotifications(
       `${env.NEXT_PUBLIC_APP_URL}/alerts`,
     ].join("\n");
     try {
-      await sendTelegramMessage(row.chatId, text, fetchImpl);
+      await sendTelegramMessage(
+        row.chatId,
+        text,
+        fetchImpl,
+        getCardTraderBlueprintUrl(row.blueprintId),
+      );
       await getDb()
         .update(notificationDeliveries)
         .set({

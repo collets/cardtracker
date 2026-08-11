@@ -76,7 +76,22 @@ Catalog success resembles:
 ```
 
 Counts vary as CardTrader changes. Market scan responses report claimed,
-successful, and failed work. Operational details are also stored in `scan_runs`.
+successful, and failed blueprint work plus logical CardTrader fetch counts:
+
+```json
+{
+  "claimed": 12,
+  "successes": 12,
+  "failures": 0,
+  "watches": 18,
+  "alerts": 1,
+  "marketplaceFetches": { "expansions": 2, "blueprints": 2 }
+}
+```
+
+The fetch counts represent client operations, not internal HTTP retries.
+Operational details, including the same fetch breakdown, are stored in
+`scan_runs.details`.
 
 Vercel calls these same GET routes according to `vercel.json`. Do not expose an
 unprotected alternate path for local convenience.

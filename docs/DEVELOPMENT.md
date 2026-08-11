@@ -245,9 +245,15 @@ pnpm cron:scan
 ```
 
 The scanner deduplicates watches by blueprint, uses PostgreSQL leases for overlap
-safety, and starts CardTrader requests at no more than five per second. It stores
-normalized metrics and hourly observations, not full raw marketplace responses.
-Local scans are manual; `vercel.json` defines production schedules.
+safety, and starts CardTrader requests at no more than five per second. For
+scheduled, administrative, or user watchlist bulk runs, five or more blueprints
+from the same expansion share one expansion marketplace request; smaller groups
+use individual blueprint requests. Explicit single-watch scans always use the
+blueprint endpoint. An expansion request that exhausts its normal retries fails
+every requested member for that run and is retried later without immediate
+request fan-out. The scanner stores normalized metrics and hourly observations,
+not full raw marketplace responses. Local scans are manual; `vercel.json` defines
+production schedules.
 
 ## Telegram development
 

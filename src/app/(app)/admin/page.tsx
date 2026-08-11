@@ -9,8 +9,8 @@ import {
 import { getDb } from "@/db";
 import { blueprints, invitations, scanRuns, users, watches } from "@/db/schema";
 import { PageHeading } from "@/components/page-heading";
+import { ActionForm, ActionSubmitButton } from "@/components/action-feedback";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -54,16 +54,16 @@ export default async function AdminPage() {
         description="Invitations, capacity, catalog synchronization, and worker health."
         actions={
           <>
-            <form action={synchronizeCatalogAction}>
-              <Button type="submit" variant="outline">
+            <ActionForm action={synchronizeCatalogAction}>
+              <ActionSubmitButton variant="outline" pendingLabel="Syncing…">
                 <RefreshCw className="size-4" /> Sync catalog
-              </Button>
-            </form>
-            <form action={runScannerAction}>
-              <Button type="submit">
+              </ActionSubmitButton>
+            </ActionForm>
+            <ActionForm action={runScannerAction}>
+              <ActionSubmitButton pendingLabel="Scanning…">
                 <Play className="size-4" /> Run scanner
-              </Button>
-            </form>
+              </ActionSubmitButton>
+            </ActionForm>
           </>
         }
       />
@@ -90,7 +90,7 @@ export default async function AdminPage() {
             <CardTitle>Invite a user</CardTitle>
           </CardHeader>
           <CardContent>
-            <form
+            <ActionForm
               action={inviteUserAction}
               className="flex flex-col gap-3 sm:flex-row"
             >
@@ -109,10 +109,10 @@ export default async function AdminPage() {
                   <SelectItem value="admin">Admin</SelectItem>
                 </SelectContent>
               </Select>
-              <Button type="submit">
+              <ActionSubmitButton pendingLabel="Inviting…">
                 <UserPlus className="size-4" /> Invite
-              </Button>
-            </form>
+              </ActionSubmitButton>
+            </ActionForm>
             <div className="mt-5 space-y-2">
               {inviteRows.map((invite) => (
                 <div
@@ -134,7 +134,7 @@ export default async function AdminPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             {userRows.map((user) => (
-              <form
+              <ActionForm
                 key={user.id}
                 action={updateUserAction}
                 className="grid gap-3 rounded-xl border p-3 sm:grid-cols-[minmax(0,1fr)_88px_auto] sm:items-center sm:gap-2"
@@ -179,11 +179,15 @@ export default async function AdminPage() {
                     containerClassName="text-xs text-slate-500"
                     className="checked:border-red-400 checked:bg-red-400"
                   />
-                  <Button type="submit" size="sm" variant="outline">
+                  <ActionSubmitButton
+                    size="sm"
+                    variant="outline"
+                    pendingLabel="Saving…"
+                  >
                     Save
-                  </Button>
+                  </ActionSubmitButton>
                 </div>
-              </form>
+              </ActionForm>
             ))}
           </CardContent>
         </Card>
