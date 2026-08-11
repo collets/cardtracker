@@ -1,206 +1,399 @@
 # Production rollout checklist
 
-This is the operator handoff for the first hosted Riftwatch deployment. Repository
-automation is safe to prepare locally, but every checkbox below changes an
-external account, hosted database, credential, deployment, webhook, billing
-plan, or production schedule and therefore requires the project owner.
+This is the operator runbook for deploying the security baseline from
+`security/hardening-baseline` to the existing Riftwatch production environment.
+It replaces the original first-deployment checklist: production, Supabase, and
+Google OAuth are already running.
 
-The initial rollout uses Vercel's daily Hobby-compatible smoke schedule. Do not
-enable minute-level scanning until the daily deployment is healthy and the
-Vercel plan change has been approved.
+The current production origin is
+[`https://cardtracker-liart.vercel.app`](https://cardtracker-liart.vercel.app).
+Vercel tracks `main` as the production branch, so merging the pull request
+automatically creates a production deployment. Do not merge until the pre-merge
+database and runtime-role canary below are complete.
 
-## 1. Review and repository controls
+Every unchecked item changes an external account, hosted database, credential,
+deployment, production job, or billing setting and requires the project owner.
+Repository automation may prepare and verify changes locally, but it must not
+perform those hosted operations implicitly.
 
-- [ ] Review and merge `agent/production-readiness` into `main` after CI passes.
-- [ ] Confirm GitHub secret scanning reports no exposed credential.
-- [ ] Protect `main` and require the CI `verify` and `secrets` jobs.
-- [ ] Record who can administer GitHub, Vercel, Supabase, Google OAuth, and the
-      Telegram bot.
+## 1. Confirmed current state
 
-## 2. Provision PostgreSQL
+The following items were completed and confirmed before the security release:
 
-- [ ] Create one Supabase project in **Central EU (Frankfurt)** or another
-      explicitly selected EU region.
-- [ ] Generate a unique database password and store it in the team's password
-      manager.
-- [ ] Copy the transaction-mode pooler URL on port `6543` for `DATABASE_URL`.
-- [ ] Copy the direct URL on port `5432` for `DATABASE_URL_DIRECT`. If the
-      migration workstation cannot reach the IPv6 direct endpoint, use the
-      session-mode pooler on port `5432` for this one-session operation.
-- [ ] Confirm SSL is enabled in both connection strings.
+- [x] Merge the original production-readiness work into `main`.
+- [x] Configure repository review controls and GitHub secret scanning.
+- [x] Create the Supabase project in Central EU (Frankfurt), store its database
+      password, and collect transaction-pooler and migration connection URLs.
+- [x] Apply the baseline migrations and confirm the application tables exist.
+- [x] Require SSL for incoming Supabase database connections.
 - [x] Disable the Supabase Data API. Riftwatch does not use PostgREST,
       Supabase browser keys, Storage, or Realtime.
-- [ ] Apply committed migrations with `pnpm db:migrate` from a trusted machine
-      where `DATABASE_URL_DIRECT` is present in the process environment. Do not
-      paste either URL into shell history, logs, issues, or chat.
-- [ ] Confirm the migration command reports success and `/api/health` can query
-      the resulting schema after deployment.
-- [ ] After the security migration, create `riftwatch_app` interactively with
-      login and no elevated role flags, grant it `riftwatch_runtime`, and set its
-      password with `psql`'s `\password` prompt. Never commit the password or put
-      it in SQL history.
-- [ ] Replace the transaction-pooler username with
-      `riftwatch_app.<project-ref>`, keep port `6543` and `sslmode=require`, then
-      update only Vercel `DATABASE_URL` and redeploy.
-- [ ] Remove the `postgres` runtime URL from Vercel and shell startup files.
-      Retain the migration credential only in the password manager and trusted
-      migration shell.
-- [ ] Run `pnpm db:security-audit -- --allow-hosted` with the new pooled runtime
-      URL. Confirm the role is unprivileged, TLS is active, every application
-      table forces RLS, Supabase API grants are zero, and audit mutation grants
-      are zero.
-- [ ] Review Supabase backup and restore coverage before inviting users. Point-in-
-      time recovery is a separate paid capability and must not be enabled without
-      approval.
+- [x] Import `collets/cardtracker` into Vercel with `main` as the production
+      branch and `fra1` as the function region.
+- [x] Deploy production with the Hobby-compatible daily catalog and scan jobs
+      committed in `vercel.json`.
+- [x] Configure the production application, database, Auth.js, CardTrader, cron,
+      capacity, and administrator variables.
+- [x] Configure Google OAuth for the production origin and verify administrator
+      sign-in.
+- [x] Verify the administrator area and manual catalog synchronization.
 
-Supabase recommends transaction pooling for temporary/serverless application
-traffic and direct connections for migrations and native PostgreSQL tools:
+These confirmations do not cover the new security migration, the
+`riftwatch_app` runtime login, an isolated Preview database, or the security
+deployment itself.
+
+## 2. Pull request and Preview gate
+
+- [ ] Open a pull request from `security/hardening-baseline` to `main`.
+- [ ] Confirm the GitHub Actions `verify` and `secrets` jobs pass on the exact
+      commit intended for merge.
+- [ ] Review the authentication, authorization, CSP, production tooling, and
+      `drizzle/0002_spicy_mulholland_black.sql` changes in the pull request.
+- [ ] Confirm the Vercel Preview build completes.
+- [ ] Choose and record one Preview strategy for this release:
+  - Provision an isolated Preview PostgreSQL database, apply the committed
+    migrations to it, and configure branch-specific Preview credentials; or
+  - Leave database-backed Preview routes intentionally unavailable and rely on
+    the completed local integration/E2E suite for this release.
+- [ ] Confirm no Preview variable points to the production database, Auth.js
+      secret, cron secret, OAuth secret, or Telegram configuration.
+
+Do not make Preview functional by reusing production data. Vercel creates
+Preview deployments for non-production branches, and environment variables can
+be scoped to a specific Preview branch. See the
+[Vercel environment documentation](https://vercel.com/docs/environment-variables).
+
+Do not merge after CI passes. Continue with the controlled production database
+change below while the pull request remains open.
+
+## 3. Prepare the trusted migration shell
+
+Use a dedicated shell whose history and output are not recorded. Do not keep
+production database URLs in `.zshrc`, `.env.local`, repository files, issues, or
+chat. Load credential values from the password manager and unset them when the
+change is complete.
+
+The migration shell must contain the complete intended production environment:
+
+- `NEXT_PUBLIC_APP_URL`
+- `DATABASE_URL` using the planned
+  `riftwatch_app.<project-ref>` transaction-pooler login, port `6543`, and
+  `sslmode=require`
+- `DATABASE_URL_DIRECT` using the privileged direct connection or the
+  IPv4-compatible session pooler on port `5432`
+- `AUTH_SECRET`, `AUTH_GOOGLE_ID`, and `AUTH_GOOGLE_SECRET`
+- `AUTH_ENABLE_DEV_PROVIDER=false`
+- `ADMIN_EMAIL`
+- `CARD_TRADER_AUTH_TOKEN`
+- `CRON_SECRET`
+- the intended scanner and quota values
+- either all three Telegram variables or none; Telegram remains unset for this
+  release
+
+Generate and store the new `riftwatch_app` password before constructing the
+planned runtime URL. Percent-encode only the password component in that URL.
+The role does not have to exist yet for the environment validation command.
+
+- [ ] Confirm the direct/session migration URL uses SSL and is reachable from
+      the trusted shell.
+- [ ] Confirm the planned runtime URL uses the shared transaction pooler and the
+      `riftwatch_app.<project-ref>` username.
+- [ ] Run the migration-mode environment check:
+
+  ```sh
+  pnpm prod:check-env -- --require-direct
+  ```
+
+- [ ] Confirm the command reports a complete, internally consistent production
+      environment without displaying values.
+
+Supabase recommends a direct connection for migrations and native PostgreSQL
+tools. When the workstation cannot reach the direct IPv6 endpoint, the shared
+pooler's session mode on port `5432` is the IPv4-compatible migration option.
+Vercel runtime traffic should use transaction mode on port `6543`. See the
 [Supabase connection guide](https://supabase.com/docs/guides/database/connecting-to-postgres).
-Region availability is documented in the
-[Supabase region guide](https://supabase.com/docs/guides/platform/regions).
 
-## 3. Configure the Vercel project
+## 4. Apply security migration `0002`
 
-- [ ] Import `collets/cardtracker` into Vercel and select `main` as the production
-      branch.
-- [ ] Confirm the function region is `fra1`, as committed in `vercel.json`.
-- [ ] Keep the committed daily catalog and market cron schedules for the first
-      deployment.
-- [ ] Configure the variables below separately for Production and Preview.
-      Preview must use isolated data and credentials; never point a preview at
-      the production database.
-- [ ] Deploy once after changing environment variables; Vercel does not apply
-      new values retroactively to existing deployments.
+This is the first production mutation in this runbook. Start a short change
+window and avoid new Google sign-ins until the security deployment is live: the
+old application version can still persist OAuth token material that migration
+`0002` clears.
 
-| Variable                                                                   | Production value                                                 | Preview rule                  |
-| -------------------------------------------------------------------------- | ---------------------------------------------------------------- | ----------------------------- |
-| `NEXT_PUBLIC_APP_URL`                                                      | Final HTTPS production origin                                    | Preview/branch HTTPS origin   |
-| `DATABASE_URL`                                                             | `riftwatch_app` Supabase transaction pooler                      | Isolated preview database     |
-| `DATABASE_URL_DIRECT`                                                      | Do not grant to runtime; use only in the trusted migration shell | Same rule                     |
-| `AUTH_SECRET`                                                              | Random 32+ character secret                                      | Different random secret       |
-| `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET`                                    | Production web client                                            | Separate test client or unset |
-| `AUTH_ENABLE_DEV_PROVIDER`                                                 | `false`                                                          | `false`                       |
-| `ADMIN_EMAIL`                                                              | Owner's verified Google email                                    | Preview administrator         |
-| `CARD_TRADER_AUTH_TOKEN`                                                   | Server-only token                                                | Separate token if available   |
-| `CRON_SECRET`                                                              | Random 32+ character secret                                      | Different random secret       |
-| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_BOT_USERNAME` / `TELEGRAM_WEBHOOK_SECRET` | One complete bot configuration                                   | Separate bot or all unset     |
-| `SCAN_BATCH_SIZE`                                                          | `50` initially                                                   | `10`                          |
-| `MAX_ACTIVE_BLUEPRINTS`                                                    | `250` initially                                                  | Small test capacity           |
-| `DEFAULT_WATCH_QUOTA`                                                      | `50`                                                             | Small test quota              |
+- [ ] Confirm `0002_spicy_mulholland_black` is the only unapplied committed
+      migration.
+- [ ] In the trusted `psql` session, record the current Drizzle migration count:
 
-Before deployment, run `pnpm prod:check-env` in a secure shell containing the
-intended production runtime values and no `DATABASE_URL_DIRECT`. Before
-migration, use a separate shell containing the direct URL and run
-`pnpm prod:check-env -- --require-direct`. The command reports names and
-validation errors only; it never prints values. See
-[Vercel environment variables](https://vercel.com/docs/environment-variables)
-for environment scoping.
+  ```sql
+  select count(*) as applied_drizzle_migrations
+  from drizzle.__drizzle_migrations;
+  ```
 
-## 4. Configure Google sign-in
+- [ ] Confirm the current Supabase backup/restore coverage is understood. Do not
+      enable a paid backup or point-in-time-recovery feature without approval.
+- [ ] Apply the committed migration from the trusted shell:
 
-- [ ] Create a Google OAuth **Web application** client for the owned production
-      domain.
-- [ ] Configure the authorized JavaScript origin as the exact HTTPS origin.
-- [ ] Configure the exact redirect URI as
-      `https://<production-host>/api/auth/callback/google`.
-- [ ] Configure the OAuth consent screen, homepage, privacy policy, support
-      contact, and test/published audience required by Google.
-- [ ] Store the client ID and secret only in Vercel Production variables.
-- [ ] Sign in with `ADMIN_EMAIL` and confirm the user is provisioned as an
-      administrator.
-- [ ] Invite a second test address and confirm an uninvited address is rejected.
+  ```sh
+  pnpm db:migrate
+  ```
 
-Google requires exact, HTTPS production redirect URI matching; see the
-[Google web-server OAuth guide](https://developers.google.com/identity/protocols/oauth2/web-server)
-and [OAuth policies](https://developers.google.com/identity/protocols/oauth2/policies).
+- [ ] Confirm the command exits successfully and the count in
+      `drizzle.__drizzle_migrations` increased by exactly one.
+- [ ] Confirm `admin_audit_events`, `job_leases`, and `riftwatch_runtime` now
+      exist.
+- [ ] If migration fails, stop. Do not edit the applied migration, rerun it
+      blindly, reset the hosted database, or proceed to deployment.
 
-## 5. Daily hosted smoke rollout
+The migration is forward-only. It creates the non-login runtime role, enables
+and forces RLS on application tables, removes public/Supabase API object access,
+adds leases and the append-only administrator audit table, and clears unused
+stored OAuth tokens.
 
-- [ ] Deploy `main` with the daily schedules in `vercel.json`.
-- [ ] Run `pnpm smoke:hosted -- --url https://<production-host>` without an
-      authorization flag. Confirm health, public pages, sign-in redirects, and
-      cron rejection all pass. The command also verifies the strict CSP,
-      security headers, and secure Auth.js cookie attributes.
-- [ ] In Vercel Firewall, prepare one fixed-window rule for non-static traffic:
-      120 requests per minute per source IP. Publish in log mode, review normal
-      traffic, then enforce 429. Skip the rule if the dashboard requires a paid
-      opt-in; do not approve billing implicitly.
-- [ ] Run `pnpm smoke:hosted -- --url https://<production-host> --run-catalog`
-      from a secure shell containing the matching `CRON_SECRET`.
-- [ ] Sign in, confirm the Riftbound catalog is populated, and create one watch.
-- [ ] Run an explicit market scan with
-      `pnpm smoke:hosted -- --url https://<production-host> --run-scan`.
-- [ ] Confirm the watch metric, observation, and scan run are present.
-- [ ] Run `pnpm ops:status -- --allow-hosted` with the production pooled
-      `DATABASE_URL` in a secure environment and save only its aggregate output.
-- [ ] Leave the daily schedule active for at least one observation window and
-      review Vercel function logs and Supabase connection usage.
+Drizzle migrations are not listed in Supabase's migration UI. The authoritative
+application migration history for this repository is
+`drizzle.__drizzle_migrations`; the Supabase Table Editor showing the resulting
+tables is not a substitute for checking that history.
 
-Vercel Cron invokes production GET routes, does not retry failures, may overlap,
-and may deliver an event more than once. Riftwatch's PostgreSQL leases and
-idempotent notification records protect those cases. See
-[Vercel cron management](https://vercel.com/docs/cron-jobs/manage-cron-jobs).
+## 5. Create and verify the application login
 
-## 6. Configure Telegram
+Open `psql` using `DATABASE_URL_DIRECT`. Create the login without embedding a
+password in SQL or shell history, then use `\password` for the prompt:
 
-- [ ] Create the production bot with BotFather and record its token and username
-      in the password manager.
-- [ ] Generate a unique webhook secret and set all three Telegram variables in
-      Vercel Production.
-- [ ] Redeploy so the new variables reach the functions.
-- [ ] In a secure local shell containing the same Telegram variables, run
-      `pnpm telegram:webhook:set -- --url https://<production-host>`.
-- [ ] Run `pnpm telegram:webhook:status` and confirm the webhook is configured
-      with no pending error.
-- [ ] Link the administrator account through Settings and confirm the one-time
-      token cannot be reused.
-- [ ] Trigger a controlled qualifying test alert and confirm exactly one Telegram
-      delivery is recorded as sent.
+```sql
+create role riftwatch_app
+  with login inherit nosuperuser nocreatedb nocreaterole noreplication nobypassrls;
+grant riftwatch_runtime to riftwatch_app;
+\password riftwatch_app
+```
 
-Telegram sends the configured secret in `X-Telegram-Bot-Api-Secret-Token`; see
-the official [Bot API `setWebhook` documentation](https://core.telegram.org/bots/api#setwebhook).
-Use `pnpm telegram:webhook:delete` during shutdown or credential rotation.
+Use the same password stored for the planned `DATABASE_URL`. Supavisor custom
+login usernames use the form `riftwatch_app.<project-ref>`.
 
-## 7. Promote to five-minute scanning
+- [ ] Confirm `riftwatch_app` can log in through the transaction pooler.
+- [ ] Confirm it is not a superuser, cannot create databases or roles, cannot
+      replicate, and cannot bypass RLS.
+- [ ] Remove `DATABASE_URL_DIRECT` from the shell, leaving `DATABASE_URL` set to
+      the new pooled runtime URL.
+- [ ] Validate the runtime environment:
 
-- [ ] Obtain explicit approval for the Vercel Pro plan and expected function
-      usage. Hobby permits only daily cron schedules; minute-level expressions
-      fail deployment.
-- [ ] Change only the market entry in `vercel.json` from `0 6 * * *` to
-      `* * * * *`; keep catalog synchronization daily.
-- [ ] Review and deploy that commit. Confirm the Cron Jobs page shows one market
-      invocation per minute in UTC.
-- [ ] Confirm the database still advances each successful blueprint's
-      `next_scan_at` by five minutes and overlapping calls do not double-claim.
-- [ ] Observe the first hour, first day, and first seven days. Review stale
-      blueprints, partial/failed runs, notification failures, CardTrader errors,
-      function duration, and database connections.
-- [ ] Keep the current 20% and €5 thresholds during the shadow period. Revisit
-      them only with multi-day evidence.
+  ```sh
+  unset DATABASE_URL_DIRECT
+  pnpm prod:check-env
+  ```
 
-Current plan limits and cron precision are documented in
-[Vercel cron usage and pricing](https://vercel.com/docs/cron-jobs/usage-and-pricing).
+- [ ] Run the read-only database security audit:
 
-## 8. Rollback and incident checklist
+  ```sh
+  pnpm db:security-audit -- --allow-hosted
+  ```
 
-- [ ] For scanner trouble, restore the daily schedule or remove the market cron
-      entry and deploy before changing application code.
-- [ ] For notification trouble, remove the Telegram webhook and disable affected
-      channels while retaining delivery evidence.
-- [ ] For a bad application deployment, use Vercel rollback and separately verify
-      the active cron configuration; rolling back code does not automatically
-      restore prior cron settings.
-- [ ] For a database migration failure, stop writes and restore from the approved
-      backup procedure. Never run `pnpm local:reset` against hosted data.
-- [ ] Rotate any credential that appeared in logs or an unauthorized location;
-      removing it from a file is not sufficient.
-- [ ] Record the incident window, affected scans/deliveries, recovery action, and
-      remaining follow-up without including credentials or user identifiers.
+- [ ] Confirm TLS is active, all application tables force RLS, unsafe
+      `PUBLIC`/Supabase API grants are zero, unsafe default grants are zero, and
+      the audit table has no update/delete/truncate grant.
+- [ ] Run the read-only operational query through the same role:
 
-## Completion gate
+  ```sh
+  pnpm ops:status -- --allow-hosted
+  ```
 
-The MVP production roadmap is complete only when every applicable checkbox above
-is closed, the five-minute schedule has completed a stable observation period,
-and the hosted Google, CardTrader, database, and Telegram paths have each been
-verified. Local tests and a successful Vercel build are not substitutes for this
+Stop if either read-only command fails. Do not compensate by granting
+`riftwatch_app` broad privileges or `BYPASSRLS`.
+
+Supabase recommends a distinct database user for each external service rather
+than giving it the `postgres` credential. See the
+[Supabase role guide](https://supabase.com/docs/guides/database/postgres/roles).
+
+## 6. Canary the runtime role before merging
+
+Vercel environment changes apply only to new deployments. Update the Production
+variable, then redeploy the latest existing `main` production deployment before
+merging the security pull request. This isolates the database-role switch from
+the application-code switch.
+
+- [ ] Replace only the Vercel Production `DATABASE_URL` with the verified
+      `riftwatch_app` transaction-pooler URL and mark it sensitive.
+- [ ] Confirm `DATABASE_URL_DIRECT` is not configured in Vercel Production,
+      Preview, or Development.
+- [ ] Redeploy the latest existing `main` production deployment so it receives
+      the new runtime URL. Do not deploy the security branch as Production yet.
+- [ ] Confirm the redeployment becomes Ready and the current production alias
+      still resolves to the existing `main` code.
+- [ ] Verify database readiness without signing in:
+
+  ```sh
+  curl --fail --silent --show-error \
+    https://cardtracker-liart.vercel.app/api/health
+  ```
+
+- [ ] Confirm the response reports `status: ok` and `database: connected`.
+- [ ] Review Vercel function logs and Supabase connections for authentication,
+      permission, RLS, or pooler errors.
+
+Do not remove the privileged `postgres` password from the password manager. It
+remains the migration/incident credential, but it must no longer be a Vercel
+runtime variable or a shell-startup variable.
+
+If the canary fails, restore the previous Vercel `DATABASE_URL` value and
+redeploy the previous Production deployment. Keep the new schema and audit the
+failed permission or connection path; do not reset or reverse the database.
+
+## 7. Merge and deploy the security release
+
+Only continue when the pull request checks, database audit, operational query,
+and runtime-role canary all pass.
+
+- [ ] Reconfirm the pull request head SHA has not changed since CI review.
+- [ ] Merge `security/hardening-baseline` into `main`.
+- [ ] Confirm Vercel creates a Production deployment from the merge commit using
+      the verified `riftwatch_app` runtime URL.
+- [ ] Confirm the deployment becomes Ready before performing mutations.
+- [ ] Run the safe hosted smoke suite without cron mutation flags:
+
+  ```sh
+  pnpm smoke:hosted -- --url https://cardtracker-liart.vercel.app
+  ```
+
+- [ ] Confirm health, landing page, anonymous redirect, cron rejection, strict
+      CSP/security headers, and secure Auth.js cookie checks pass.
+- [ ] Sign in with the verified `ADMIN_EMAIL` and confirm `/admin` loads.
+- [ ] Perform one controlled administrator action and confirm its success event
+      appears in the administrator audit table.
+- [ ] Confirm an invalid or unauthorized administrator action is rejected and a
+      safe failure event is recorded where applicable.
+- [ ] Run this count-only query from a trusted database session and confirm it
+      returns zero after the new Google sign-in:
+
+  ```sql
+  select count(*) as accounts_with_stored_oauth_tokens
+  from accounts
+  where refresh_token is not null
+     or access_token is not null
+     or id_token is not null;
+  ```
+
+- [ ] Review Vercel logs for CSP, Auth.js, database permission, and Server Action
+      errors without copying credentials or user data into the rollout record.
+
+Vercel automatically creates a Production deployment when a commit reaches the
+configured production branch. See the
+[Vercel Git deployment guide](https://vercel.com/docs/git). Environment changes
+are deployment-scoped and do not alter existing deployments retroactively.
+
+## 8. Controlled catalog and scanner verification
+
+The commands in this section mutate hosted state and call CardTrader. Run them
+only after the safe deployment checks pass and only with explicit production
+authorization.
+
+- [ ] Run one authenticated catalog job from the trusted shell:
+
+  ```sh
+  pnpm smoke:hosted -- \
+    --url https://cardtracker-liart.vercel.app \
+    --run-catalog
+  ```
+
+- [ ] Confirm the catalog job succeeds or returns the expected recent/busy skip,
+      records an administrator/operational event where applicable, and does not
+      overlap another catalog job.
+- [ ] Confirm Discover remains populated and create or inspect one controlled
+      watch.
+- [ ] Run one authenticated market job:
+
+  ```sh
+  pnpm smoke:hosted -- \
+    --url https://cardtracker-liart.vercel.app \
+    --run-scan
+  ```
+
+- [ ] Confirm the watch metric, observation, scan run, and lease behavior are
+      correct.
+- [ ] Run `pnpm ops:status -- --allow-hosted` again and retain only its aggregate
+      output.
+- [ ] Leave the daily Hobby schedule active for at least one observation window
+      and review Vercel function logs and Supabase connection usage.
+
+Vercel Cron can overlap or deliver an event more than once. Riftwatch's database
+leases and idempotent notification records protect these cases. Vercel Hobby
+permits daily schedules but not more frequent cron expressions; execution may
+occur at any point within the selected hour. See the
+[Vercel cron limits](https://vercel.com/docs/cron-jobs/usage-and-pricing).
+
+## 9. Optional WAF follow-up
+
+- [ ] If available without a paid opt-in, create a fixed-window Vercel Firewall
+      rule for non-static traffic at 120 requests per minute per source IP.
+- [ ] Publish it in log mode first, review legitimate traffic, and only then
+      enforce HTTP 429.
+- [ ] Skip and record the item when Vercel requires a plan change or paid
+      overage. Do not approve billing implicitly.
+
+WAF publication is not a merge gate when it requires payment. Authentication,
+authorization, quotas, leases, and cron secrets remain the application-level
+controls.
+
+## 10. Deferred work: Telegram
+
+Telegram is disabled and explicitly outside this security release. Keep
+`TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, and
+`TELEGRAM_WEBHOOK_SECRET` all unset in Production and Preview.
+
+Do not register a webhook or treat Telegram verification as a completion gate.
+Before enabling it later, perform the dedicated webhook, one-time-link race,
+delivery-idempotency, credential-rotation, and abuse review described in
+[`docs/SECURITY.md`](SECURITY.md).
+
+## 11. Deferred work: five-minute scanning
+
+The committed schedules remain daily:
+
+- catalog: `0 3 * * *`
+- market scan: `0 6 * * *`
+
+Promotion to minute-level invocation requires separate approval for Vercel Pro
+and expected function usage. After approval, change only the market schedule to
+`* * * * *`, observe capacity and CardTrader behavior, and confirm successful
+blueprints continue advancing `next_scan_at` by five minutes.
+
+This paid-plan promotion is not a merge or security-release completion gate.
+
+## 12. Rollback and incident paths
+
+- **Before merge, runtime-role canary fails:** restore the previous Production
+  `DATABASE_URL`, redeploy the previous Production deployment, and diagnose the
+  role/pooler/grant failure. Do not remove RLS or grant bypass privileges.
+- **New application deployment fails:** use Vercel rollback to the runtime-role
+  canary deployment. The old application was verified against the new role
+  before merge.
+- **Cron or scanner trouble:** disable the affected Vercel Cron Job or redeploy
+  without that cron entry before changing evidence tables.
+- **Database integrity is uncertain:** stop application writes and cron jobs,
+  preserve logs/audit evidence, and use the approved backup procedure. Never run
+  `pnpm local:reset` or an ad hoc destructive repair against hosted data.
+- **Credential exposure:** revoke and rotate the credential, update the correct
+  Vercel environment, and redeploy. Removing a value from a file or log is not
+  revocation.
+
+Vercel code rollback does not automatically restore cron configuration. Verify
+the active Cron Jobs page separately after every rollback. Record incident time,
+impact, recovery, and follow-up without credentials or personal identifiers.
+
+## Security release completion gate
+
+The security release is complete only when:
+
+- the exact reviewed commit passed both GitHub Actions jobs;
+- migration `0002` was applied once without unresolved errors;
+- Vercel runs through `riftwatch_app`, not `postgres`;
+- the hosted database security audit reports no unsafe role, TLS, RLS, default
+  grant, Supabase API grant, or audit-mutation condition;
+- the safe hosted smoke suite passes on the production deployment;
+- Google sign-in, administrator authorization, ownership checks, CSP, audit
+  events, catalog, and one controlled scan are verified; and
+- production logs show no unresolved permission, authentication, CSP, scanner,
+  or connection-pool errors.
+
+Preview isolation, WAF publication, Telegram, and five-minute scanning remain
+separately recorded follow-ups as described above. Local tests and a successful
+Vercel build are necessary evidence, but they are not substitutes for this
 operator validation.
