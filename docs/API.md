@@ -58,6 +58,17 @@ The helpers load `.env.local`, add the authorization header without printing it,
 and call `NEXT_PUBLIC_APP_URL`. A 401 indicates that the helper and running app
 do not share the same `CRON_SECRET`.
 
+For an explicitly selected HTTPS deployment, the safe boundary check is:
+
+```sh
+pnpm smoke:hosted -- --url https://your-deployment.example
+```
+
+It intentionally calls both cron routes without authorization and expects 401.
+Authorized catalog or scanner execution requires the separate `--run-catalog`
+or `--run-scan` flag plus a matching `CRON_SECRET`; those flags mutate database
+state and may call CardTrader.
+
 Catalog success resembles:
 
 ```json

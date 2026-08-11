@@ -117,6 +117,16 @@ owner instructions. Removing it from the latest commit is not sufficient.
 | Database schema                     | migration generation/review, local migrate, and affected flow |
 | Build/tooling/dependency            | `pnpm check:all` and clean-install reasoning                  |
 
+Database-backed service changes must also pass `pnpm test:integration`. The
+integration and Playwright fixture loaders reject non-loopback database URLs;
+do not weaken that guard for convenience.
+
+Production preparation and operator actions are separate. Repository work may
+add or test `prod:check-env`, `ops:status`, and safe hosted smoke behavior, but
+deployments, hosted migrations, authorized cron calls, webhook mutations, and
+plan upgrades require explicit environment-specific approval and follow
+[the production rollout checklist](docs/PRODUCTION_ROLLOUT.md).
+
 Before requesting review, run at least:
 
 ```sh
@@ -141,3 +151,8 @@ the platform or an existing dependency already covers the need. For Next.js
 changes, check the installed documentation rather than relying on older framework
 knowledge. Do not switch the project to webpack or downgrade TypeScript to work
 around a tooling or sandbox limitation.
+
+GitHub Actions must remain pinned to immutable commit SHAs with an adjacent
+release-version comment. Dependabot checks those pins weekly; verify the upstream
+release notes, Node.js action runtime, and compatibility with Node.js 24 and pnpm
+10 before merging an update.

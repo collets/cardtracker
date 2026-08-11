@@ -50,7 +50,10 @@ export async function disconnectTelegram(userId: string) {
     .where(eq(telegramChannels.userId, userId));
 }
 
-export async function handleTelegramUpdate(input: unknown) {
+export async function handleTelegramUpdate(
+  input: unknown,
+  fetchImpl: typeof fetch = fetch,
+) {
   const update = telegramUpdateSchema.parse(input);
   const message = update.message;
   if (!message?.text?.startsWith("/start ")) return { handled: false };
@@ -93,6 +96,7 @@ export async function handleTelegramUpdate(input: unknown) {
   await sendTelegramMessage(
     String(message.chat.id),
     "Riftwatch is connected. Deal alerts will arrive here.",
+    fetchImpl,
   );
   return { handled: true };
 }
@@ -125,9 +129,13 @@ export async function queueTelegramDelivery(
     .onConflictDoNothing();
 }
 
-async function sendTelegramMessage(chatId: string, text: string) {
+async function sendTelegramMessage(
+  chatId: string,
+  text: string,
+  fetchImpl: typeof fetch,
+) {
   const token = requireEnv("TELEGRAM_BOT_TOKEN");
-  const response = await fetch(
+  const response = await fetchImpl(
     `https://api.telegram.org/bot${token}/sendMessage`,
     {
       method: "POST",
@@ -149,7 +157,10 @@ async function sendTelegramMessage(chatId: string, text: string) {
     throw new Error(`Telegram delivery failed with HTTP ${response.status}`);
 }
 
-export async function dispatchPendingNotifications() {
+export async function dispatchPendingNotifications(
+  fetchImpl: typeof fetch = fetch,
+  options: { deliveryIds?: string[] } = {},
+) {
   const env = getServerEnv();
   if (!env.TELEGRAM_BOT_TOKEN) return { sent: 0, failed: 0 };
 
@@ -171,6 +182,9 @@ export async function dispatchPendingNotifications() {
         inArray(notificationDeliveries.status, ["pending", "failed"]),
         lt(notificationDeliveries.attempts, 3),
         eq(telegramChannels.enabled, true),
+        options.deliveryIds?.length
+          ? inArray(notificationDeliveries.id, options.deliveryIds)
+          : undefined,
       ),
     )
     .orderBy(asc(notificationDeliveries.createdAt))
@@ -192,7 +206,7 @@ export async function dispatchPendingNotifications() {
       `${env.NEXT_PUBLIC_APP_URL}/alerts`,
     ].join("\n");
     try {
-      await sendTelegramMessage(row.chatId, text);
+      await sendTelegramMessage(row.chatId, text, fetchImpl);
       await getDb()
         .update(notificationDeliveries)
         .set({

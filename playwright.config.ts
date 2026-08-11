@@ -1,8 +1,14 @@
 import { defineConfig, devices } from "@playwright/test";
+import nextEnv from "@next/env";
+
+const { loadEnvConfig } = nextEnv;
+loadEnvConfig(process.cwd(), true);
 
 export default defineConfig({
   testDir: "./e2e",
-  fullyParallel: true,
+  fullyParallel: false,
+  globalSetup: "./e2e/global-setup.ts",
+  globalTeardown: "./e2e/global-teardown.ts",
   retries: process.env.CI ? 2 : 0,
   reporter: "html",
   use: {
@@ -23,7 +29,8 @@ export default defineConfig({
       AUTH_SECRET:
         process.env.AUTH_SECRET ??
         "playwright-only-secret-at-least-32-characters",
-      AUTH_ENABLE_DEV_PROVIDER: "false",
+      AUTH_ENABLE_DEV_PROVIDER: "true",
+      ADMIN_EMAIL: "e2e-admin@riftwatch.test",
     },
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],

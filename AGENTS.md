@@ -34,6 +34,10 @@ that matches the task:
 - `pnpm local:doctor` diagnoses environment and service health.
 - `pnpm check` is the minimum code-change verification.
 - `pnpm check:all` adds production build and browser tests.
+- `pnpm test:integration` uses disposable, local-only PostgreSQL fixtures.
+- `pnpm prod:check-env`, `pnpm ops:status`, and `pnpm smoke:hosted` are the
+  production-readiness interfaces; hosted mutations always require explicit
+  operator flags.
 - `pnpm local:reset` deletes local database data and requires explicit consent.
 
 Use `rg`/`rg --files` for discovery. Use `apply_patch` for intentional edits.
@@ -67,3 +71,5 @@ Preserve unrelated work and generated Drizzle migrations.
   `pnpm check`.
 - Commands/env/docs: keep README, development docs, `.env.example`,
   `CONTRIBUTING.md`, AGENTS.md, and the project skill mutually consistent.
+- Never run hosted smoke mutation flags, hosted migrations, webhook mutations,
+  or paid-plan changes without explicit production authorization.

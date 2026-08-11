@@ -18,4 +18,11 @@
 - [x] Scheduled scanning, leases, history, pruning, and alert lifecycle.
 - [x] Telegram linking and idempotent delivery.
 - [x] Admin health and capacity controls.
+- [x] Authenticated browser coverage and scanner/database integration tests.
+- [x] Production diagnostics, hosted smoke tooling, and operator runbook.
+- [x] Bounded marketplace calibration workflow with aggregate-only reporting.
 - [ ] Hosted smoke test and five-minute production rollout.
+
+The remaining item requires project-owner access to Supabase, Vercel, Google,
+and Telegram. Follow `docs/PRODUCTION_ROLLOUT.md`; do not infer hosted completion
+from local checks.
