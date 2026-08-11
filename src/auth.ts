@@ -12,6 +12,7 @@ import {
   users,
   verificationTokens,
 } from "@/db/schema";
+import { resolveKnownUserRole } from "@/lib/auth/authorization";
 import { normalizeEmail } from "@/lib/utils";
 
 const devAuthEnabled =
@@ -35,9 +36,9 @@ async function authorizationForEmail(emailValue: string) {
     .from(users)
     .where(sql`lower(${users.email}) = ${email}`)
     .limit(1);
-  if (existing?.disabled) return null;
-  if (existing) return { email, role: existing.role };
-  if (email === adminEmail) return { email, role: "admin" as const };
+  const knownRole = resolveKnownUserRole(email === adminEmail, existing);
+  if (knownRole === null) return null;
+  if (knownRole) return { email, role: knownRole };
 
   const [invitation] = await getDb()
     .select({ role: invitations.role })
