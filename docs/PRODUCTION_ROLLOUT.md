@@ -9,30 +9,37 @@ The initial rollout uses Vercel's daily Hobby-compatible smoke schedule. Do not
 enable minute-level scanning until the daily deployment is healthy and the
 Vercel plan change has been approved.
 
+Status updated **2026-08-11**: repository controls and the initial Supabase
+database migration are complete. The next rollout stage is Vercel project
+configuration; checks that require a hosted runtime remain open.
+
 ## 1. Review and repository controls
 
-- [ ] Review and merge `agent/production-readiness` into `main` after CI passes.
-- [ ] Confirm GitHub secret scanning reports no exposed credential.
-- [ ] Protect `main` and require the CI `verify` and `secrets` jobs.
-- [ ] Record who can administer GitHub, Vercel, Supabase, Google OAuth, and the
+- [x] Review and merge `agent/production-readiness` into `main` after CI passes.
+- [x] Confirm GitHub secret scanning reports no exposed credential.
+- [x] Protect `main` and require the CI `verify` and `secrets` jobs.
+- [x] Record who can administer GitHub, Vercel, Supabase, Google OAuth, and the
       Telegram bot.
 
 ## 2. Provision PostgreSQL
 
-- [ ] Create one Supabase project in **Central EU (Frankfurt)** or another
+- [x] Create one Supabase project in **Central EU (Frankfurt)** or another
       explicitly selected EU region.
-- [ ] Generate a unique database password and store it in the team's password
-      manager.
-- [ ] Copy the transaction-mode pooler URL on port `6543` for `DATABASE_URL`.
-- [ ] Copy the direct URL on port `5432` for `DATABASE_URL_DIRECT`. If the
+- [x] Generate a unique database password.
+- [ ] Confirm the database password is stored in the team's password manager.
+- [x] Copy the transaction-mode pooler URL on port `6543` for `DATABASE_URL`.
+- [x] Copy the direct URL on port `5432` for `DATABASE_URL_DIRECT`. If the
       migration workstation cannot reach the IPv6 direct endpoint, use the
       session-mode pooler on port `5432` for this one-session operation.
 - [ ] Confirm SSL is enabled in both connection strings.
-- [ ] Apply committed migrations with `pnpm db:migrate` from a trusted machine
+- [x] Apply committed migrations with `pnpm db:migrate` from a trusted machine
       where `DATABASE_URL_DIRECT` is present in the process environment. Do not
       paste either URL into shell history, logs, issues, or chat.
-- [ ] Confirm the migration command reports success and `/api/health` can query
-      the resulting schema after deployment.
+- [x] Confirm the migration command reports success, the Riftwatch tables exist
+      in `public`, and `drizzle.__drizzle_migrations` contains both committed
+      migrations.
+- [ ] After the first Vercel deployment, confirm `/api/health` reports
+      `database: "connected"` through the pooled production `DATABASE_URL`.
 - [ ] Review Supabase backup and restore coverage before inviting users. Point-in-
       time recovery is a separate paid capability and must not be enabled without
       approval.
