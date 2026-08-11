@@ -43,6 +43,60 @@ traffic and direct connections for migrations and native PostgreSQL tools:
 Region availability is documented in the
 [Supabase region guide](https://supabase.com/docs/guides/platform/regions).
 
+### Secure migration-shell procedure
+
+The trusted migration shell is a terminal on an operator-controlled workstation
+with the Riftwatch repository checked out. Keep the canonical password and
+connection strings in the team's password manager. Do not save hosted database
+URLs in `.env.local`, because local lifecycle commands must remain connected to
+Docker PostgreSQL.
+
+Percent-encode a database password without placing the raw value in shell
+history:
+
+```sh
+read -rs 'DB_PASSWORD?Supabase database password: '
+echo
+DB_PASSWORD="$DB_PASSWORD" node -e 'console.log(encodeURIComponent(process.env.DB_PASSWORD))'
+unset DB_PASSWORD
+```
+
+The encoded output remains a credential. Insert it into the direct connection
+string in the password manager, ensure the URL enables SSL, and do not paste the
+completed URL into chat, logs, or repository files.
+
+Load the completed direct URL invisibly for one migration session:
+
+```sh
+read -rs 'DATABASE_URL_DIRECT?Supabase direct connection URL: '
+echo
+export DATABASE_URL_DIRECT
+pnpm db:migrate
+unset DATABASE_URL_DIRECT
+```
+
+Drizzle may report that the `drizzle` schema and `__drizzle_migrations` relation
+already exist. Those idempotent PostgreSQL notices are expected and do not prove
+that the application tables were created. In the Supabase SQL Editor, verify the
+remote catalog without modifying it:
+
+```sql
+select table_schema, table_name
+from information_schema.tables
+where table_schema in ('public', 'drizzle')
+order by table_schema, table_name;
+
+select count(*) as applied_migrations
+from drizzle.__drizzle_migrations;
+```
+
+The current repository contains two migrations. A successful initial migration
+therefore produces the Riftwatch tables in `public` and reports two applied
+migrations. If the `drizzle` objects are absent, the command likely connected to
+a different database. If two migrations are recorded but the public tables are
+absent, stop and investigate the inconsistent migration metadata; do not delete
+or rewrite it.
+
 ## 3. Configure the Vercel project
 
 - [ ] Import `collets/cardtracker` into Vercel and select `main` as the production
