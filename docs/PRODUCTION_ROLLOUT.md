@@ -26,12 +26,12 @@ configuration; checks that require a hosted runtime remain open.
 - [x] Create one Supabase project in **Central EU (Frankfurt)** or another
       explicitly selected EU region.
 - [x] Generate a unique database password.
-- [ ] Confirm the database password is stored in the team's password manager.
+- [x] Confirm the database password is stored in the team's password manager.
 - [x] Copy the transaction-mode pooler URL on port `6543` for `DATABASE_URL`.
 - [x] Copy the direct URL on port `5432` for `DATABASE_URL_DIRECT`. If the
       migration workstation cannot reach the IPv6 direct endpoint, use the
       session-mode pooler on port `5432` for this one-session operation.
-- [ ] Confirm SSL is enabled in both connection strings.
+- [x] Confirm Supabase enforces SSL for incoming database connections.
 - [x] Apply committed migrations with `pnpm db:migrate` from a trusted machine
       where `DATABASE_URL_DIRECT` is present in the process environment. Do not
       paste either URL into shell history, logs, issues, or chat.
