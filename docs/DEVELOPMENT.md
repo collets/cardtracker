@@ -331,6 +331,11 @@ fixtures refuse non-loopback database URLs.
 lifecycle, Telegram delivery idempotency, failures, and pruning against local
 PostgreSQL. Keep Docker running before invoking it.
 
+GitHub Actions runs the same checks on Node.js 24 with PostgreSQL 17. Third-party
+actions are pinned to immutable release commits, use the Node.js 24 action
+runtime, and receive weekly update proposals through Dependabot. Review the
+version comment and upstream release notes whenever Dependabot changes a pin.
+
 ## Production-readiness tools
 
 These commands prepare and verify a deployment but do not replace the operator

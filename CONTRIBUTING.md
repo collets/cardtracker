@@ -151,3 +151,8 @@ the platform or an existing dependency already covers the need. For Next.js
 changes, check the installed documentation rather than relying on older framework
 knowledge. Do not switch the project to webpack or downgrade TypeScript to work
 around a tooling or sandbox limitation.
+
+GitHub Actions must remain pinned to immutable commit SHAs with an adjacent
+release-version comment. Dependabot checks those pins weekly; verify the upstream
+release notes, Node.js action runtime, and compatibility with Node.js 24 and pnpm
+10 before merging an update.
