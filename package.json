@@ -22,6 +22,8 @@
     "local:logs": "node scripts/local.mjs logs",
     "local:reset": "node scripts/local.mjs reset",
     "db:shell": "node scripts/local.mjs db-shell",
+    "db:backup": "tsx scripts/database-recovery.mts backup",
+    "db:restore:verify": "tsx scripts/database-recovery.mts verify",
     "cron:catalog": "node scripts/local.mjs cron-catalog",
     "cron:scan": "node scripts/local.mjs cron-scan",
     "prod:check-env": "tsx scripts/production.mts check-env",

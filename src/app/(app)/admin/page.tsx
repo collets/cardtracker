@@ -1,5 +1,12 @@
 import { count, countDistinct, desc, eq } from "drizzle-orm";
-import { Database, Play, RefreshCw, Trash2, UserPlus } from "lucide-react";
+import {
+  Database,
+  MessageCircleMore,
+  Play,
+  RefreshCw,
+  Trash2,
+  UserPlus,
+} from "lucide-react";
 import {
   inviteUserAction,
   revokePendingInvitationAction,
@@ -8,7 +15,15 @@ import {
   updateUserAction,
 } from "@/app/(app)/admin/actions";
 import { getDb } from "@/db";
-import { blueprints, invitations, scanRuns, users, watches } from "@/db/schema";
+import {
+  alertFeedback,
+  alerts,
+  blueprints,
+  invitations,
+  scanRuns,
+  users,
+  watches,
+} from "@/db/schema";
 import { PageHeading } from "@/components/page-heading";
 import { ActionForm, ActionSubmitButton } from "@/components/action-feedback";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +38,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { requireAdmin } from "@/lib/auth/guards";
+import {
+  ALERT_FEEDBACK_OPTIONS,
+  type AlertFeedbackOutcome,
+} from "@/lib/alerts/feedback-options";
 
 export default async function AdminPage() {
   await requireAdmin();
@@ -33,6 +52,8 @@ export default async function AdminPage() {
     [catalogCount],
     [watchCount],
     [uniqueCount],
+    [alertCount],
+    feedbackRows,
   ] = await Promise.all([
     getDb().select().from(users).orderBy(users.email),
     getDb().select().from(invitations).orderBy(desc(invitations.createdAt)),
@@ -46,7 +67,19 @@ export default async function AdminPage() {
       .select({ value: countDistinct(watches.blueprintId) })
       .from(watches)
       .where(eq(watches.active, true)),
+    getDb().select({ value: count() }).from(alerts),
+    getDb()
+      .select({ outcome: alertFeedback.outcome, value: count() })
+      .from(alertFeedback)
+      .groupBy(alertFeedback.outcome),
   ]);
+  const feedbackCounts = new Map<AlertFeedbackOutcome, number>(
+    feedbackRows.map((row) => [row.outcome, row.value]),
+  );
+  const feedbackTotal = feedbackRows.reduce(
+    (total, row) => total + row.value,
+    0,
+  );
   return (
     <>
       <PageHeading
@@ -86,7 +119,7 @@ export default async function AdminPage() {
         />
       </div>
       <div className="grid gap-6 xl:grid-cols-2">
-        <Card>
+        <Card className="min-w-0">
           <CardHeader>
             <CardTitle>Invite a user</CardTitle>
           </CardHeader>
@@ -122,10 +155,10 @@ export default async function AdminPage() {
               {inviteRows.map((invite) => (
                 <div
                   key={invite.id}
-                  className="flex items-center justify-between rounded-lg bg-white/[0.03] px-3 py-2 text-sm"
+                  className="flex flex-col items-stretch gap-2 rounded-lg bg-white/[0.03] px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between"
                 >
                   <span className="min-w-0 truncate">{invite.email}</span>
-                  <div className="flex shrink-0 items-center gap-2">
+                  <div className="flex shrink-0 items-center justify-between gap-2 sm:justify-end">
                     <Badge variant={invite.acceptedAt ? "success" : "muted"}>
                       {invite.acceptedAt ? "accepted" : "pending"}
                     </Badge>
@@ -152,7 +185,7 @@ export default async function AdminPage() {
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="min-w-0">
           <CardHeader>
             <CardTitle>Users</CardTitle>
           </CardHeader>
@@ -216,6 +249,35 @@ export default async function AdminPage() {
           </CardContent>
         </Card>
       </div>
+      <Card className="mt-6">
+        <CardHeader>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <CardTitle>Alert feedback</CardTitle>
+              <p className="mt-2 text-sm text-slate-400">
+                {feedbackTotal} of {alertCount?.value ?? 0} alerts rated. Each
+                alert contributes its latest answer.
+              </p>
+            </div>
+            <MessageCircleMore className="size-5 shrink-0 text-cyan-300" />
+          </div>
+        </CardHeader>
+        <CardContent className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          {ALERT_FEEDBACK_OPTIONS.map((option) => (
+            <div
+              key={option.value}
+              className="rounded-xl border bg-white/[0.03] p-3"
+            >
+              <p className="text-xl font-semibold">
+                {feedbackCounts.get(option.value) ?? 0}
+              </p>
+              <p className="mt-1 text-xs leading-5 text-slate-400">
+                {option.label}
+              </p>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
       <Card className="mt-6">
         <CardHeader>
           <CardTitle>Recent runs</CardTitle>

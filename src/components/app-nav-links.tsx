@@ -59,7 +59,11 @@ function NavigationLink({ item }: { item: NavigationItem }) {
           "bg-cyan-300/15 text-cyan-100 shadow-sm shadow-cyan-950/20 hover:bg-cyan-300/15 hover:text-cyan-100",
       )}
     >
-      <Link href={item.href} aria-current={active ? "page" : undefined}>
+      <Link
+        href={item.href}
+        aria-label={item.label}
+        aria-current={active ? "page" : undefined}
+      >
         <Icon className="size-4" aria-hidden="true" />
         <span className="hidden sm:inline">{item.label}</span>
       </Link>

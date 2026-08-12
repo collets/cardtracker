@@ -60,20 +60,21 @@ export async function handleTelegramUpdate(
   const message = update.message;
   if (!message?.text?.startsWith("/start ")) return { handled: false };
   const token = message.text.slice(7).trim();
-  const [link] = await getDb()
-    .select()
-    .from(telegramLinkTokens)
-    .where(
-      and(
-        eq(telegramLinkTokens.tokenHash, hashToken(token)),
-        gt(telegramLinkTokens.expiresAt, new Date()),
-        isNull(telegramLinkTokens.usedAt),
-      ),
-    )
-    .limit(1);
-  if (!link) return { handled: false };
+  const now = new Date();
+  const linked = await getDb().transaction(async (tx) => {
+    const [link] = await tx
+      .update(telegramLinkTokens)
+      .set({ usedAt: now })
+      .where(
+        and(
+          eq(telegramLinkTokens.tokenHash, hashToken(token)),
+          gt(telegramLinkTokens.expiresAt, now),
+          isNull(telegramLinkTokens.usedAt),
+        ),
+      )
+      .returning({ userId: telegramLinkTokens.userId });
+    if (!link) return false;
 
-  await getDb().transaction(async (tx) => {
     await tx
       .insert(telegramChannels)
       .values({
@@ -90,11 +91,10 @@ export async function handleTelegramUpdate(
           linkedAt: new Date(),
         },
       });
-    await tx
-      .update(telegramLinkTokens)
-      .set({ usedAt: new Date() })
-      .where(eq(telegramLinkTokens.id, link.id));
+    return true;
   });
+  if (!linked) return { handled: false };
+
   await sendTelegramMessage(
     String(message.chat.id),
     "Riftwatch is connected. Deal alerts will arrive here.",

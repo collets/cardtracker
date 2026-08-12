@@ -6,6 +6,8 @@ import { redirect } from "next/navigation";
 import { getDb } from "@/db";
 import { alerts, userPreferences, watches } from "@/db/schema";
 import { actionResult } from "@/lib/actions/server";
+import { ALERT_FEEDBACK_OUTCOMES } from "@/lib/alerts/feedback-options";
+import { saveAlertFeedback } from "@/lib/alerts/service";
 import { requireUser } from "@/lib/auth/guards";
 import { UserFacingError } from "@/lib/errors";
 import { runMarketScanner, scanUserWatchlist } from "@/lib/scanner/service";
@@ -38,6 +40,9 @@ const preferencesSchema = z.object({
 
 const watchIdSchema = z.uuid("Invalid watch identifier");
 const alertIdSchema = z.uuid("Invalid alert identifier");
+const alertFeedbackOutcomeSchema = z.enum(ALERT_FEEDBACK_OUTCOMES, {
+  error: "Choose a valid feedback option",
+});
 
 export async function addWatchAction(formData: FormData) {
   const user = await requireUser();
@@ -138,6 +143,22 @@ export async function markAlertReadAction(formData: FormData) {
     },
     "Alert marked as read",
     "The alert could not be updated. Please retry.",
+  );
+}
+
+export async function saveAlertFeedbackAction(formData: FormData) {
+  const user = await requireUser();
+  return actionResult(
+    async () => {
+      const alertId = alertIdSchema.parse(formData.get("alertId"));
+      const outcome = alertFeedbackOutcomeSchema.parse(formData.get("outcome"));
+      await saveAlertFeedback(user.id, alertId, outcome);
+      revalidatePath("/alerts");
+      revalidatePath("/dashboard");
+      return outcome;
+    },
+    "Thanks — your feedback was saved",
+    "Your feedback could not be saved. Please retry.",
   );
 }
 

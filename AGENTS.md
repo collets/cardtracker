@@ -38,6 +38,9 @@ that matches the task:
 - `pnpm prod:check-env`, `pnpm ops:status`, and `pnpm smoke:hosted` are the
   production-readiness interfaces; hosted mutations always require explicit
   operator flags.
+- `pnpm db:backup` creates a read-only logical dump only with explicit hosted
+  opt-in; `pnpm db:restore:verify` restores only to disposable loopback
+  PostgreSQL.
 - `pnpm local:reset` deletes local database data and requires explicit consent.
 
 Use `rg`/`rg --files` for discovery. Use `apply_patch` for intentional edits.

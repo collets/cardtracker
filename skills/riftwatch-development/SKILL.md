@@ -36,6 +36,10 @@ Work from the repository root and preserve unrelated developer changes.
 - For deployment preparation, use `pnpm prod:check-env`, `pnpm ops:status`, and
   `pnpm smoke:hosted`. Do not add an authorized hosted flag or Telegram webhook
   mutation unless the operator explicitly authorizes that environment.
+- For recovery work, use `pnpm db:backup` with an external directory and
+  explicit read-only hosted opt-in, then use `pnpm db:restore:verify` only with
+  loopback PostgreSQL. Never treat backup authorization as restore
+  authorization.
 - For route handlers and server actions, authenticate, authorize, and validate
   at the boundary. Scope user data by the current database user.
 

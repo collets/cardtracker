@@ -3,7 +3,14 @@ import { and, desc, eq } from "drizzle-orm";
 import { ExternalLink } from "lucide-react";
 import { markAlertReadAction } from "@/app/(app)/actions";
 import { getDb } from "@/db";
-import { alerts, blueprints, expansions, watches } from "@/db/schema";
+import {
+  alertFeedback,
+  alerts,
+  blueprints,
+  expansions,
+  watches,
+} from "@/db/schema";
+import { AlertFeedbackDialog } from "@/components/alert-feedback";
 import { CardArt } from "@/components/card-art";
 import { ActionForm, ActionSubmitButton } from "@/components/action-feedback";
 import { PageHeading } from "@/components/page-heading";
@@ -17,11 +24,17 @@ import { formatEuro } from "@/lib/utils";
 export default async function AlertsPage() {
   const user = await requireUser();
   const rows = await getDb()
-    .select({ alert: alerts, card: blueprints, expansion: expansions })
+    .select({
+      alert: alerts,
+      card: blueprints,
+      expansion: expansions,
+      feedback: alertFeedback,
+    })
     .from(alerts)
     .innerJoin(watches, eq(watches.id, alerts.watchId))
     .innerJoin(blueprints, eq(blueprints.id, watches.blueprintId))
     .innerJoin(expansions, eq(expansions.id, blueprints.expansionId))
+    .leftJoin(alertFeedback, eq(alertFeedback.alertId, alerts.id))
     .where(and(eq(watches.userId, user.id)))
     .orderBy(desc(alerts.lastSeenAt))
     .limit(100);
@@ -40,7 +53,7 @@ export default async function AlertsPage() {
             </CardContent>
           </Card>
         ) : (
-          rows.map(({ alert, card, expansion }) => (
+          rows.map(({ alert, card, expansion, feedback }) => (
             <Card
               key={alert.id}
               className={
@@ -85,8 +98,12 @@ export default async function AlertsPage() {
                     listing {alert.productId}
                   </p>
                 </div>
-                <div className="col-span-2 flex gap-2 sm:col-span-1">
-                  <Button asChild size="sm">
+                <div className="col-span-2 flex flex-wrap gap-2 sm:col-span-1 sm:justify-end">
+                  <Button
+                    asChild
+                    size="sm"
+                    className="h-10 flex-1 sm:h-8 sm:flex-none"
+                  >
                     <Link
                       href={getCardTraderBlueprintUrl(card.id)}
                       target="_blank"
@@ -95,12 +112,17 @@ export default async function AlertsPage() {
                       CardTrader <ExternalLink className="size-3.5" />
                     </Link>
                   </Button>
+                  <AlertFeedbackDialog
+                    alertId={alert.id}
+                    currentOutcome={feedback?.outcome ?? null}
+                  />
                   {!alert.readAt ? (
                     <ActionForm action={markAlertReadAction}>
                       <input type="hidden" name="alertId" value={alert.id} />
                       <ActionSubmitButton
                         size="sm"
                         variant="ghost"
+                        className="h-10 sm:h-8"
                         pendingLabel="Saving…"
                       >
                         Mark read

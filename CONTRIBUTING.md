@@ -127,6 +127,12 @@ deployments, hosted migrations, authorized cron calls, webhook mutations, and
 plan upgrades require explicit environment-specific approval and follow
 [the production rollout checklist](docs/PRODUCTION_ROLLOUT.md).
 
+Manual backups are the exception only in that they are read-only: use the
+guarded `pnpm db:backup` command and its explicit `--allow-hosted` flag, then
+verify the archive against disposable local PostgreSQL as described in
+[Database recovery](docs/DATABASE_RECOVERY.md). A hosted restore always requires
+separate production authorization.
+
 Before requesting review, run at least:
 
 ```sh

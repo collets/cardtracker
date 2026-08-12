@@ -14,7 +14,10 @@ database migration, the production Vercel database connection, production
 Google authentication, and the daily hosted smoke checks are complete. Preview
 Google authentication is intentionally deferred until the project adopts a
 stable Preview origin and an isolated OAuth client. The initial production
-telemetry review is complete.
+telemetry review is complete. The production Telegram bot, webhook, account
+link, and controlled alert delivery are operational. The daily scan schedule is
+intentionally retained while a small friends-and-family cohort validates demand;
+five-minute scanning is deferred and no paid-plan change is currently planned.
 
 ## 1. Review and repository controls
 
@@ -39,19 +42,36 @@ telemetry review is complete.
       where `DATABASE_URL_DIRECT` is present in the process environment. Do not
       paste either URL into shell history, logs, issues, or chat.
 - [x] Confirm the migration command reports success, the Riftwatch tables exist
-      in `public`, and `drizzle.__drizzle_migrations` contains both committed
-      migrations.
+      in `public`, and `drizzle.__drizzle_migrations` contains all migrations
+      deployed at that point.
 - [x] After the first Vercel deployment, confirm `/api/health` reports
       `database: "connected"` through the pooled production `DATABASE_URL`.
-- [ ] Review Supabase backup and restore coverage before inviting users. Point-in-
-      time recovery is a separate paid capability and must not be enabled without
-      approval.
+- [x] Review Supabase backup and restore coverage. The current Free project has
+      no managed scheduled backups or downloadable platform backup.
+- [x] Choose the no-cost manual logical-backup position and add guarded backup,
+      checksum, disposable local restore verification, and operator
+      documentation in [Database recovery](DATABASE_RECOVERY.md).
+- [x] Install PostgreSQL 17 client tools on the trusted operator workstation,
+      run `pnpm db:backup -- --output <external-directory> --allow-hosted`, and
+      verify that archive with `pnpm db:restore:verify -- --file <archive>`.
+      Record only the archive and verification timestamps in private operator
+      notes. Do not invite the validation cohort until this succeeds.
+
+Recovery evidence recorded **2026-08-12**: a production logical archive and its
+integrity manifest were created at 17:48 UTC with owner-only file permissions.
+At 17:49 UTC, its checksum, application schema, Drizzle migration history, and
+core data queries passed a disposable local PostgreSQL 17 restore. The verifier
+then removed the temporary database. No hosted write or restore was performed.
 
 Supabase recommends transaction pooling for temporary/serverless application
 traffic and direct connections for migrations and native PostgreSQL tools:
 [Supabase connection guide](https://supabase.com/docs/guides/database/connecting-to-postgres).
 Region availability is documented in the
 [Supabase region guide](https://supabase.com/docs/guides/platform/regions).
+Current managed backup availability is documented in
+[Supabase pricing](https://supabase.com/pricing); manual logical backup and
+restore are documented in the
+[Supabase CLI backup guide](https://supabase.com/docs/guides/platform/migrating-within-supabase/backup-restore).
 
 ### Secure migration-shell procedure
 
@@ -133,12 +153,15 @@ or rewrite it.
 - [x] Import `collets/cardtracker` into Vercel and select `main` as the production
       branch.
 - [x] Confirm the function region is `fra1`, as committed in `vercel.json`.
-- [ ] Keep the committed daily catalog and market cron schedules for the first
+- [x] Keep the committed daily catalog and market cron schedules for the first
       deployment.
-- [ ] Configure the variables below separately for Production and Preview.
-      Preview must use isolated data and credentials; never point a preview at
-      the production database.
-- [ ] Deploy once after changing environment variables; Vercel does not apply
+- [x] Configure the Production variables below without granting
+      `DATABASE_URL_DIRECT` to the runtime.
+- [ ] Complete and verify the isolated Preview variable set. Preview must use
+      isolated data and credentials; never point a preview at the production
+      database. Preview Google authentication remains explicitly deferred and
+      does not block the friends-and-family production validation.
+- [x] Deploy once after changing environment variables; Vercel does not apply
       new values retroactively to existing deployments.
 
 | Variable                                                                   | Production value                                                 | Preview rule                  |
@@ -230,25 +253,83 @@ idempotent notification records protect those cases. See
 
 ## 6. Configure Telegram
 
-- [ ] Create the production bot with BotFather and record its token and username
+- [x] Create the production bot with BotFather and record its token and username
       in the password manager.
-- [ ] Generate a unique webhook secret and set all three Telegram variables in
+- [x] Generate a unique webhook secret and set all three Telegram variables in
       Vercel Production.
-- [ ] Redeploy so the new variables reach the functions.
-- [ ] In a secure local shell containing the same Telegram variables, run
+- [x] Redeploy so the new variables reach the functions.
+- [x] In a secure local shell containing the same Telegram variables, run
       `pnpm telegram:webhook:set -- --url https://<production-host>`.
-- [ ] Run `pnpm telegram:webhook:status` and confirm the webhook is configured
+- [x] Run `pnpm telegram:webhook:status` and confirm the webhook is configured
       with no pending error.
-- [ ] Link the administrator account through Settings and confirm the one-time
-      token cannot be reused.
-- [ ] Trigger a controlled qualifying test alert and confirm exactly one Telegram
-      delivery is recorded as sent.
+- [x] Link the administrator account through Account settings.
+- [x] Confirm one-time link consumption is an atomic database claim. A concurrent
+      integration test submits the same token twice and proves exactly one
+      request links the account and sends confirmation.
+- [x] Trigger a controlled qualifying test alert and confirm exactly one Telegram
+      message is received with the expected deal evidence and CardTrader button.
+- [x] Confirm the corresponding production notification-delivery record is
+      `sent` and no duplicate delivery was created.
+
+Production evidence recorded **2026-08-12**: the bot was configured as
+`RiftwatchAlertsBot`, the webhook reported healthy, the administrator linked the
+account, and one controlled qualifying alert arrived with the expected card,
+pricing, and direct CardTrader action. The Riftwatch application link initially
+contained a duplicate slash; the URL join was fixed, merged, deployed, and the
+application build subsequently succeeded. No bot credential or webhook secret
+was included in the evidence. A read-only database audit subsequently confirmed
+one enabled Telegram channel, consumed state for both retained link-token rows,
+and exactly one delivery for the controlled alert: `sent`, one attempt, a send
+timestamp, no recorded error, and no duplicate dedupe key.
+
+Token consumption and channel linking now share one transaction. The conditional
+`UPDATE ... RETURNING` is the claim: after one transaction consumes the row,
+concurrent and sequential attempts return no link and send no confirmation.
 
 Telegram sends the configured secret in `X-Telegram-Bot-Api-Secret-Token`; see
 the official [Bot API `setWebhook` documentation](https://core.telegram.org/bots/api#setwebhook).
 Use `pnpm telegram:webhook:delete` during shutdown or credential rotation.
 
+### Deploy structured validation feedback
+
+- [x] Before deploying the feedback UI, create and locally verify the first
+      manual production backup described in Section 2.
+- [x] Apply migration `0002_rare_klaw.sql` from the trusted migration shell. It
+      adds one outcome enum and the RLS-enabled `alert_feedback` table; it does
+      not rewrite existing alert rows.
+- [ ] Deploy the matching application commit and confirm `/api/health` remains
+      healthy.
+- [ ] Have one invited user rate an alert from a mobile viewport, change the
+      answer once, and confirm the alert is marked read.
+- [ ] Confirm Administration shows exactly one latest response for that alert
+      and no free-form or credential data is stored.
+
+Repository evidence recorded **2026-08-12**: ownership enforcement and editable
+one-row-per-alert feedback pass PostgreSQL integration tests. The mobile-first
+bottom sheet, desktop dialog, shared success feedback, administrator aggregate,
+and horizontal-overflow checks pass Playwright across every application page.
+These local checks do not mark the hosted migration or user validation complete.
+
+Preview evidence recorded **2026-08-12**: all committed migrations were applied
+through the non-production session-mode connection. A read-only query confirmed
+the `alert_feedback` table, enabled RLS, all six outcome values, and three
+Drizzle migration-history rows. The production migration remains a separate
+operator gate.
+
+Production evidence recorded **2026-08-12**: migration `0002_rare_klaw.sql`
+completed successfully through the verified `aws-0-eu-central-1` session pooler.
+A read-only query confirmed the `alert_feedback` table, enabled RLS, all six
+outcome values, and three Drizzle migration-history rows. No application data was
+rewritten; the matching application deployment and invited-user validation are
+still outstanding.
+
 ## 7. Promote to five-minute scanning
+
+This promotion is deliberately deferred while a small friends-and-family cohort
+validates whether Riftwatch solves a real purchasing problem. Keep the daily
+smoke schedule, do not upgrade Vercel for this item, and do not advertise
+five-minute coverage during this phase. Resume only after product demand and
+alert usefulness justify the recurring cost and operational observation period.
 
 - [ ] Obtain explicit approval for the Vercel Pro plan and expected function
       usage. Hobby permits only daily cron schedules; minute-level expressions
@@ -284,10 +365,13 @@ Current plan limits and cron precision are documented in
 - [ ] Record the incident window, affected scans/deliveries, recovery action, and
       remaining follow-up without including credentials or user identifiers.
 
-## Completion gate
+## Completion gates
 
-The MVP production roadmap is complete only when every applicable checkbox above
-is closed, the five-minute schedule has completed a stable observation period,
-and the hosted Google, CardTrader, database, and Telegram paths have each been
-verified. Local tests and a successful Vercel build are not substitutes for this
-operator validation.
+The current friends-and-family validation gate does not require Section 7. It
+requires the applicable items in Sections 1–6, a reviewed backup/recovery
+position, and working hosted Google, CardTrader, database, and Telegram paths.
+The remaining Preview configuration does not block this production-only cohort.
+
+The later five-minute MVP gate requires the Section 7 promotion and observation
+period plus an applicable Section 8 incident response. Local tests and a
+successful Vercel build are not substitutes for either operator validation.

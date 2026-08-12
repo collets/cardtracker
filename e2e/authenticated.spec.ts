@@ -76,7 +76,7 @@ test.describe.serial("authenticated MVP", () => {
     await expect(page.getByText(e2eAcceptedInviteEmail)).toBeVisible();
   });
 
-  test("normal user cannot access admin and can mark an alert read", async ({
+  test("normal user cannot access admin and can rate an alert", async ({
     page,
   }) => {
     await signIn(page, e2eUserEmail);
@@ -91,7 +91,20 @@ test.describe.serial("authenticated MVP", () => {
       "href",
       `https://www.cardtrader.com/en/cards/${e2eAlertBlueprintId}`,
     );
-    await page.getByRole("button", { name: "Mark read" }).click();
+    await page.getByRole("button", { name: "Rate alert" }).click();
+    await expect(
+      page.getByRole("heading", { name: "How useful was this alert?" }),
+    ).toBeVisible();
+    await page
+      .getByRole("dialog")
+      .getByRole("button", { name: /Bought it/ })
+      .click();
+    await expect(
+      page.getByRole("status").filter({ hasText: "your feedback was saved" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Feedback: Bought it" }),
+    ).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Mark read" }),
     ).not.toBeVisible();
@@ -181,5 +194,84 @@ test.describe.serial("authenticated MVP", () => {
     await page.getByRole("checkbox", { name: "French" }).check();
     await page.getByRole("button", { name: "Save defaults" }).click();
     await expect(page.getByRole("checkbox", { name: "French" })).toBeChecked();
+  });
+
+  test("core application remains usable at a mobile viewport", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+
+    async function expectNoPageOverflow(path: string, authenticated = true) {
+      await page.goto(path);
+      await expect(page.getByRole("heading").first()).toBeVisible();
+      const dimensions = await page.evaluate(() => ({
+        viewport: document.documentElement.clientWidth,
+        page: document.documentElement.scrollWidth,
+      }));
+      if (dimensions.page > dimensions.viewport + 1) {
+        const overflow = await page.evaluate(() => {
+          const viewport = document.documentElement.clientWidth;
+          return [...document.querySelectorAll<HTMLElement>("body *")]
+            .map((element) => ({
+              tag: element.tagName.toLowerCase(),
+              className: element.className,
+              text: element.innerText?.slice(0, 80),
+              right: Math.round(element.getBoundingClientRect().right),
+            }))
+            .filter((element) => element.right > viewport + 1)
+            .slice(0, 5);
+        });
+        expect(overflow, `Horizontal overflow on ${path}`).toEqual([]);
+      }
+      expect(dimensions.page).toBeLessThanOrEqual(dimensions.viewport + 1);
+      if (authenticated) {
+        await expect(
+          page.getByRole("navigation", { name: "Primary navigation" }),
+        ).toBeInViewport();
+      }
+    }
+
+    await expectNoPageOverflow("/", false);
+    await expectNoPageOverflow("/sign-in", false);
+    await signIn(page, e2eUserEmail);
+    await expectNoPageOverflow("/alerts");
+    await page.getByRole("button", { name: /^(Rate alert|Feedback:)/ }).click();
+    const feedbackDialog = page.getByRole("dialog");
+    await expect(feedbackDialog).toBeInViewport();
+    const firstFeedbackOption = feedbackDialog.getByRole("button", {
+      name: /Bought it/,
+    });
+    await expect(firstFeedbackOption).toBeInViewport();
+    expect(
+      await firstFeedbackOption.evaluate(
+        (element) => element.getBoundingClientRect().height,
+      ),
+    ).toBeGreaterThanOrEqual(56);
+    await page.getByRole("button", { name: "Close" }).click();
+    await expectNoPageOverflow("/settings");
+
+    await page.context().clearCookies();
+    await signIn(page, e2eAdminEmail);
+    for (const path of [
+      "/dashboard",
+      "/cards?q=E2E+Watch+Card",
+      `/cards/${e2eWatchBlueprintId}`,
+      "/settings",
+      "/admin",
+    ]) {
+      await expectNoPageOverflow(path);
+    }
+
+    await page.goto("/dashboard");
+    const watchDetails = page.locator('a[href^="/watches/"]').first();
+    if ((await watchDetails.count()) > 0) {
+      await watchDetails.click();
+      await expect(page).toHaveURL(/\/watches\//);
+      const dimensions = await page.evaluate(() => ({
+        viewport: document.documentElement.clientWidth,
+        page: document.documentElement.scrollWidth,
+      }));
+      expect(dimensions.page).toBeLessThanOrEqual(dimensions.viewport + 1);
+    }
   });
 });
