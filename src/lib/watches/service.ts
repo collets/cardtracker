@@ -9,6 +9,19 @@ import type { watchInputSchema } from "@/lib/watches/validation";
 
 type WatchInput = z.infer<typeof watchInputSchema>;
 
+function watchFilterValues(input: WatchInput) {
+  return {
+    languages: input.languages,
+    conditions: input.conditions,
+    foil: input.foil === "any" ? null : input.foil === "foil",
+    graded: input.graded,
+    requireZero: input.requireZero,
+    sellerCountries: input.sellerCountries,
+    discountPercent: input.discountPercent,
+    minSavingsCents: Math.round(input.minSavingsEuros * 100),
+  };
+}
+
 export async function createWatch(userId: string, input: WatchInput) {
   const [watch] = await createWatches(userId, [input]);
   return watch;
@@ -23,6 +36,7 @@ export async function createWatches(userId: string, inputs: WatchInput[]) {
   if (blueprintIds.length !== inputs.length) {
     throw new UserFacingError("The card selection contains duplicates");
   }
+  const env = getServerEnv();
 
   return getDb().transaction(async (tx) => {
     // All watch creation paths take these locks in the same order. This keeps
@@ -34,50 +48,56 @@ export async function createWatches(userId: string, inputs: WatchInput[]) {
       sql`select pg_advisory_xact_lock(hashtext(${`riftwatch:watch-user:${userId}`}))`,
     );
 
-    const [user, blueprintRows, current, uniqueBlueprints, alreadyWatched] =
-      await Promise.all([
-        tx
-          .select({ quota: users.watchQuota })
-          .from(users)
-          .where(eq(users.id, userId))
-          .limit(1),
-        tx
-          .select({ id: blueprints.id })
-          .from(blueprints)
-          .where(
-            and(
-              inArray(blueprints.id, blueprintIds),
-              eq(blueprints.active, true),
-            ),
+    const [
+      userRows,
+      blueprintRows,
+      currentWatchCountRows,
+      uniqueBlueprintCountRows,
+      alreadyWatched,
+    ] = await Promise.all([
+      tx
+        .select({ quota: users.watchQuota })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1),
+      tx
+        .select({ id: blueprints.id })
+        .from(blueprints)
+        .where(
+          and(
+            inArray(blueprints.id, blueprintIds),
+            eq(blueprints.active, true),
           ),
-        tx
-          .select({ value: count() })
-          .from(watches)
-          .where(and(eq(watches.userId, userId), eq(watches.active, true))),
-        tx
-          .select({ value: countDistinct(watches.blueprintId) })
-          .from(watches)
-          .where(eq(watches.active, true)),
-        tx
-          .select({ blueprintId: watches.blueprintId })
-          .from(watches)
-          .where(
-            and(
-              inArray(watches.blueprintId, blueprintIds),
-              eq(watches.active, true),
-            ),
-          )
-          .groupBy(watches.blueprintId),
-      ]);
+        ),
+      tx
+        .select({ value: count() })
+        .from(watches)
+        .where(and(eq(watches.userId, userId), eq(watches.active, true))),
+      tx
+        .select({ value: countDistinct(watches.blueprintId) })
+        .from(watches)
+        .where(eq(watches.active, true)),
+      tx
+        .select({ blueprintId: watches.blueprintId })
+        .from(watches)
+        .where(
+          and(
+            inArray(watches.blueprintId, blueprintIds),
+            eq(watches.active, true),
+          ),
+        )
+        .groupBy(watches.blueprintId),
+    ]);
 
-    const quota = user[0]?.quota ?? getServerEnv().DEFAULT_WATCH_QUOTA;
+    const quota = userRows[0]?.quota ?? env.DEFAULT_WATCH_QUOTA;
     if (blueprintRows.length !== blueprintIds.length) {
       throw new UserFacingError(
         "One or more selected Riftbound cards are no longer available",
       );
     }
-    if ((current[0]?.value ?? 0) + inputs.length > quota) {
-      const remaining = Math.max(0, quota - (current[0]?.value ?? 0));
+    const currentWatchCount = currentWatchCountRows[0]?.value ?? 0;
+    if (currentWatchCount + inputs.length > quota) {
+      const remaining = Math.max(0, quota - currentWatchCount);
       throw new UserFacingError(
         `Watch quota exceeded: ${remaining} slot${remaining === 1 ? "" : "s"} remaining`,
       );
@@ -90,8 +110,8 @@ export async function createWatches(userId: string, inputs: WatchInput[]) {
       (blueprintId) => !watchedBlueprintIds.has(blueprintId),
     ).length;
     if (
-      (uniqueBlueprints[0]?.value ?? 0) + newBlueprintCount >
-      getServerEnv().MAX_ACTIVE_BLUEPRINTS
+      (uniqueBlueprintCountRows[0]?.value ?? 0) + newBlueprintCount >
+      env.MAX_ACTIVE_BLUEPRINTS
     ) {
       throw new UserFacingError(
         "The application-wide active blueprint capacity has been reached",
@@ -104,14 +124,7 @@ export async function createWatches(userId: string, inputs: WatchInput[]) {
         inputs.map((input) => ({
           userId,
           blueprintId: input.blueprintId,
-          languages: input.languages,
-          conditions: input.conditions,
-          foil: input.foil === "any" ? null : input.foil === "foil",
-          graded: input.graded,
-          requireZero: input.requireZero,
-          sellerCountries: input.sellerCountries,
-          discountPercent: input.discountPercent,
-          minSavingsCents: Math.round(input.minSavingsEuros * 100),
+          ...watchFilterValues(input),
         })),
       )
       .returning();
@@ -147,14 +160,7 @@ export async function updateWatch(
   const [updated] = await getDb()
     .update(watches)
     .set({
-      languages: input.languages,
-      conditions: input.conditions,
-      foil: input.foil === "any" ? null : input.foil === "foil",
-      graded: input.graded,
-      requireZero: input.requireZero,
-      sellerCountries: input.sellerCountries,
-      discountPercent: input.discountPercent,
-      minSavingsCents: Math.round(input.minSavingsEuros * 100),
+      ...watchFilterValues(input),
       updatedAt: new Date(),
     })
     .where(and(eq(watches.id, watchId), eq(watches.userId, userId)))

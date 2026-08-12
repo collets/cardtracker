@@ -17,8 +17,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { DEFAULT_CONDITIONS } from "@/lib/constants";
 import { requireUser } from "@/lib/auth/guards";
+import {
+  CARD_CONDITIONS,
+  DEFAULT_CONDITIONS,
+  SUPPORTED_LANGUAGE_CODES,
+  SUPPORTED_LANGUAGE_LABELS,
+} from "@/lib/constants";
 
 export default async function CardPage({
   params,
@@ -70,19 +75,12 @@ export default async function CardPage({
               <fieldset>
                 <legend className="mb-3 text-sm font-medium">Languages</legend>
                 <div className="flex flex-wrap gap-4">
-                  {(
-                    [
-                      ["en", "English"],
-                      ["fr", "French"],
-                      ["kr", "Korean"],
-                      ["zh-CN", "Chinese"],
-                    ] as const
-                  ).map(([value, label]) => (
+                  {SUPPORTED_LANGUAGE_CODES.map((value) => (
                     <Checkbox
                       key={value}
                       name="languages"
                       value={value}
-                      label={label}
+                      label={SUPPORTED_LANGUAGE_LABELS[value]}
                       defaultChecked={(
                         preferences?.languages ?? ["en"]
                       ).includes(value)}
@@ -93,14 +91,7 @@ export default async function CardPage({
               <fieldset>
                 <legend className="mb-3 text-sm font-medium">Condition</legend>
                 <div className="flex flex-wrap gap-4">
-                  {[
-                    "Mint",
-                    "Near Mint",
-                    "Slightly Played",
-                    "Moderately Played",
-                    "Played",
-                    "Poor",
-                  ].map((condition) => (
+                  {CARD_CONDITIONS.map((condition) => (
                     <Checkbox
                       key={condition}
                       name="conditions"

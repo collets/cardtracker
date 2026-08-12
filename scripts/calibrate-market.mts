@@ -12,14 +12,6 @@ function argument(flag: string, fallback: string) {
   return index >= 0 ? (args[index + 1] ?? fallback) : fallback;
 }
 
-function median(values: number[]) {
-  if (values.length === 0) return null;
-  const sorted = [...values].sort((a, b) => a - b);
-  const middle = Math.floor(sorted.length / 2);
-  if (sorted.length % 2) return sorted[middle] ?? null;
-  return Math.round(((sorted[middle - 1] ?? 0) + (sorted[middle] ?? 0)) / 2);
-}
-
 function percent(numerator: number, denominator: number) {
   return denominator === 0
     ? "0.0%"
@@ -154,7 +146,7 @@ for (const [index, card] of selected.entries()) {
 }
 
 const completed = selected.length - failures;
-const medianDiscountBps = median(discounts);
+const medianDiscountBps = deals.median(discounts);
 process.stdout.write(`# Vendetta marketplace calibration
 
 - Generated: ${new Date().toISOString()}

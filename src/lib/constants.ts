@@ -36,6 +36,14 @@ export const EU_EEA_COUNTRY_CODES = [
 ] as const;
 
 export const SUPPORTED_LANGUAGE_CODES = ["en", "fr", "kr", "zh-CN"] as const;
+export type SupportedLanguageCode = (typeof SUPPORTED_LANGUAGE_CODES)[number];
+export const SUPPORTED_LANGUAGE_LABELS: Record<SupportedLanguageCode, string> =
+  {
+    en: "English",
+    fr: "French",
+    kr: "Korean",
+    "zh-CN": "Chinese",
+  };
 export const CARD_CONDITIONS = [
   "Mint",
   "Near Mint",

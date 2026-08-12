@@ -1,20 +1,25 @@
 import "server-only";
-import { and, asc, eq, gt, inArray, lt, or, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNotNull, lt, or, sql } from "drizzle-orm";
 import { getDb, getSql } from "@/db";
 import {
   alerts,
   blueprints,
   blueprintScanState,
+  notificationDeliveries,
   priceObservations,
   scanRuns,
+  telegramLinkTokens,
   userPreferences,
   watches,
   watchMetrics,
 } from "@/db/schema";
 import { CardTraderClient } from "@/lib/cardtrader/client";
+import type { MarketListing } from "@/lib/cardtrader/types";
+import { PRICE_HISTORY_RETENTION_DAYS } from "@/lib/constants";
 import { evaluateDeal } from "@/lib/deals/evaluate";
 import type { WatchFilters } from "@/lib/deals/types";
 import { getServerEnv } from "@/lib/env";
+import { boundedErrorMessage } from "@/lib/errors";
 import {
   fetchMarketplacePlan,
   planMarketplaceFetches,
@@ -27,17 +32,16 @@ import {
 } from "@/lib/telegram/service";
 
 const BLUEPRINT_PROCESS_CONCURRENCY = 5;
+const MILLISECONDS_PER_MINUTE = 60_000;
+const MILLISECONDS_PER_DAY = 24 * 60 * MILLISECONDS_PER_MINUTE;
+const SCAN_INTERVAL_MS = 5 * MILLISECONDS_PER_MINUTE;
+const BASELINE_LOOKBACK_MS = 7 * MILLISECONDS_PER_DAY;
+const ALERT_RENOTIFICATION_INTERVAL_MS = MILLISECONDS_PER_DAY;
 
 function hourBucket(date: Date) {
   const value = new Date(date);
   value.setUTCMinutes(0, 0, 0);
   return value;
-}
-
-function safeError(error: unknown) {
-  return error instanceof Error
-    ? error.message.slice(0, 500)
-    : "Unknown scan error";
 }
 
 export async function claimDueBlueprints(
@@ -74,15 +78,15 @@ async function recordBlueprintFailure(blueprintId: number, error: unknown) {
     .set({
       leaseUntil: null,
       failureCount: sql`${blueprintScanState.failureCount} + 1`,
-      lastError: safeError(error),
-      nextScanAt: new Date(Date.now() + 5 * 60 * 1000),
+      lastError: boundedErrorMessage(error, "Unknown scan error"),
+      nextScanAt: new Date(Date.now() + SCAN_INTERVAL_MS),
     })
     .where(eq(blueprintScanState.blueprintId, blueprintId));
 }
 
 async function processBlueprintListings(
   blueprintId: number,
-  listings: Awaited<ReturnType<CardTraderClient["marketplaceProducts"]>>,
+  listings: MarketListing[],
 ): Promise<{ watches: number; alerts: number }> {
   try {
     const watchRows = await getDb()
@@ -97,7 +101,7 @@ async function processBlueprintListings(
 
     for (const row of watchRows) {
       const watch = row.watch;
-      const since = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      const since = new Date(now.getTime() - BASELINE_LOOKBACK_MS);
       const history = await getDb()
         .select({ value: priceObservations.currentBaselineCents })
         .from(priceObservations)
@@ -127,58 +131,48 @@ async function processBlueprintListings(
           .map((point) => point.value)
           .filter((value): value is number => value !== null),
       );
+      const metricValues = {
+        bestProductId: evaluation.candidate?.productId ?? null,
+        candidate: evaluation.candidate ?? null,
+        bestPriceCents: evaluation.candidate?.priceCents ?? null,
+        currentBaselineCents: evaluation.currentBaselineCents,
+        historicalBaselineCents: evaluation.historicalBaselineCents,
+        referencePriceCents: evaluation.referencePriceCents,
+        eligibleCount: evaluation.eligibleListings.length,
+        discountBps: evaluation.discountBps,
+        confidence: evaluation.confidence,
+        qualifies: evaluation.qualifies,
+        rejectionReason: evaluation.rejectionReason,
+        scannedAt: now,
+      };
 
       await getDb()
         .insert(watchMetrics)
         .values({
           watchId: watch.id,
-          bestProductId: evaluation.candidate?.productId ?? null,
-          candidate: evaluation.candidate ?? null,
-          bestPriceCents: evaluation.candidate?.priceCents ?? null,
-          currentBaselineCents: evaluation.currentBaselineCents,
-          historicalBaselineCents: evaluation.historicalBaselineCents,
-          referencePriceCents: evaluation.referencePriceCents,
-          eligibleCount: evaluation.eligibleListings.length,
-          discountBps: evaluation.discountBps,
-          confidence: evaluation.confidence,
-          qualifies: evaluation.qualifies,
-          rejectionReason: evaluation.rejectionReason,
-          scannedAt: now,
+          ...metricValues,
         })
         .onConflictDoUpdate({
           target: watchMetrics.watchId,
-          set: {
-            bestProductId: evaluation.candidate?.productId ?? null,
-            candidate: evaluation.candidate ?? null,
-            bestPriceCents: evaluation.candidate?.priceCents ?? null,
-            currentBaselineCents: evaluation.currentBaselineCents,
-            historicalBaselineCents: evaluation.historicalBaselineCents,
-            referencePriceCents: evaluation.referencePriceCents,
-            eligibleCount: evaluation.eligibleListings.length,
-            discountBps: evaluation.discountBps,
-            confidence: evaluation.confidence,
-            qualifies: evaluation.qualifies,
-            rejectionReason: evaluation.rejectionReason,
-            scannedAt: now,
-          },
+          set: metricValues,
         });
+
+      const observationValues = {
+        bestPriceCents: evaluation.candidate?.priceCents ?? null,
+        currentBaselineCents: evaluation.currentBaselineCents,
+        eligibleCount: evaluation.eligibleListings.length,
+      };
 
       await getDb()
         .insert(priceObservations)
         .values({
           watchId: watch.id,
           bucketAt: hourBucket(now),
-          bestPriceCents: evaluation.candidate?.priceCents ?? null,
-          currentBaselineCents: evaluation.currentBaselineCents,
-          eligibleCount: evaluation.eligibleListings.length,
+          ...observationValues,
         })
         .onConflictDoUpdate({
           target: [priceObservations.watchId, priceObservations.bucketAt],
-          set: {
-            bestPriceCents: evaluation.candidate?.priceCents ?? null,
-            currentBaselineCents: evaluation.currentBaselineCents,
-            eligibleCount: evaluation.eligibleListings.length,
-          },
+          set: observationValues,
         });
 
       const activeForWatch = await getDb()
@@ -193,6 +187,13 @@ async function processBlueprintListings(
         evaluation.discountBps !== null &&
         evaluation.confidence
       ) {
+        const alertEvidence = {
+          candidate: evaluation.candidate,
+          candidatePriceCents: evaluation.candidate.priceCents,
+          referencePriceCents: evaluation.referencePriceCents,
+          discountBps: evaluation.discountBps,
+          confidence: evaluation.confidence,
+        };
         const existing = activeForWatch.find(
           (alert) => alert.productId === evaluation.candidate?.productId,
         );
@@ -200,11 +201,7 @@ async function processBlueprintListings(
           await getDb()
             .update(alerts)
             .set({
-              candidate: evaluation.candidate,
-              candidatePriceCents: evaluation.candidate.priceCents,
-              referencePriceCents: evaluation.referencePriceCents,
-              discountBps: evaluation.discountBps,
-              confidence: evaluation.confidence,
+              ...alertEvidence,
               missCount: 0,
               lastSeenAt: now,
             })
@@ -223,7 +220,7 @@ async function processBlueprintListings(
           const canRenotify =
             !known?.lastNotifiedAt ||
             now.getTime() - known.lastNotifiedAt.getTime() >=
-              24 * 60 * 60 * 1000 ||
+              ALERT_RENOTIFICATION_INTERVAL_MS ||
             (known.lastNotifiedPriceCents !== null &&
               evaluation.candidate.priceCents <=
                 known.lastNotifiedPriceCents * 0.9);
@@ -232,11 +229,7 @@ async function processBlueprintListings(
                 .update(alerts)
                 .set({
                   state: "active",
-                  candidate: evaluation.candidate,
-                  candidatePriceCents: evaluation.candidate.priceCents,
-                  referencePriceCents: evaluation.referencePriceCents,
-                  discountBps: evaluation.discountBps,
-                  confidence: evaluation.confidence,
+                  ...alertEvidence,
                   missCount: 0,
                   lastSeenAt: now,
                   expiredAt: null,
@@ -252,11 +245,7 @@ async function processBlueprintListings(
                 .values({
                   watchId: watch.id,
                   productId: evaluation.candidate.productId,
-                  candidate: evaluation.candidate,
-                  candidatePriceCents: evaluation.candidate.priceCents,
-                  referencePriceCents: evaluation.referencePriceCents,
-                  discountBps: evaluation.discountBps,
-                  confidence: evaluation.confidence,
+                  ...alertEvidence,
                   lastNotifiedAt: now,
                   lastNotifiedPriceCents: evaluation.candidate.priceCents,
                 })
@@ -289,7 +278,7 @@ async function processBlueprintListings(
       .update(blueprintScanState)
       .set({
         lastScanAt: now,
-        nextScanAt: new Date(now.getTime() + 5 * 60 * 1000),
+        nextScanAt: new Date(now.getTime() + SCAN_INTERVAL_MS),
         leaseUntil: null,
         failureCount: 0,
         lastError: null,
@@ -306,7 +295,7 @@ export async function scanBlueprint(
   blueprintId: number,
   client: BlueprintMarketplaceProductClient = new CardTraderClient(),
 ): Promise<{ watches: number; alerts: number }> {
-  let listings: Awaited<ReturnType<CardTraderClient["marketplaceProducts"]>>;
+  let listings: MarketListing[];
   try {
     listings = await client.marketplaceProducts(blueprintId);
   } catch (error) {
@@ -353,15 +342,12 @@ export async function runMarketScanner(
 
   if (options.explicitBlueprintId !== undefined) {
     blueprintFetches = 1;
-    const outcome = await Promise.allSettled([
-      scanBlueprint(options.explicitBlueprintId, client),
-    ]);
-    const result = outcome[0];
-    if (result?.status === "fulfilled") {
+    try {
+      const result = await scanBlueprint(options.explicitBlueprintId, client);
       successes = 1;
-      watchCount = result.value.watches;
-      alertCount = result.value.alerts;
-    } else {
+      watchCount = result.watches;
+      alertCount = result.alerts;
+    } catch {
       failures = 1;
     }
   } else if (blueprintIds.length > 0) {
@@ -477,7 +463,9 @@ export async function pruneOperationalData(
     telegramTokenUserIds?: string[];
   } = {},
 ) {
-  const historyCutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const historyCutoff = new Date(
+    Date.now() - PRICE_HISTORY_RETENTION_DAYS * MILLISECONDS_PER_DAY,
+  );
   const tokenCutoff = new Date();
   await getDb()
     .delete(priceObservations)
@@ -489,15 +477,13 @@ export async function pruneOperationalData(
           : undefined,
       ),
     );
-  const { telegramLinkTokens, notificationDeliveries } =
-    await import("@/db/schema");
   await getDb()
     .delete(telegramLinkTokens)
     .where(
       and(
         or(
           lt(telegramLinkTokens.expiresAt, tokenCutoff),
-          sql`${telegramLinkTokens.usedAt} is not null`,
+          isNotNull(telegramLinkTokens.usedAt),
         ),
         scope.telegramTokenUserIds?.length
           ? inArray(telegramLinkTokens.userId, scope.telegramTokenUserIds)

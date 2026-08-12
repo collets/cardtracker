@@ -8,7 +8,7 @@ import {
   users,
   watches,
 } from "@/db/schema";
-import { createWatches } from "@/lib/watches/service";
+import { createWatches, updateWatch } from "@/lib/watches/service";
 import { watchInputSchema } from "@/lib/watches/validation";
 
 const expansionId = 991_001;
@@ -97,5 +97,26 @@ describe("bulk watch persistence", () => {
         .from(blueprintScanState)
         .where(inArray(blueprintScanState.blueprintId, [...blueprintIds])),
     ).resolves.toHaveLength(0);
+  });
+
+  it("updates filters without allowing the watched blueprint to change", async () => {
+    const [created] = await createWatches(userId, [
+      watchInputSchema.parse({ blueprintId: blueprintIds[0] }),
+    ]);
+    if (!created) throw new Error("Watch fixture was not created");
+
+    const updated = await updateWatch(
+      userId,
+      created.id,
+      watchInputSchema.parse({
+        blueprintId: blueprintIds[1],
+        discountPercent: 25,
+      }),
+    );
+
+    expect(updated).toMatchObject({
+      blueprintId: blueprintIds[0],
+      discountPercent: 25,
+    });
   });
 });

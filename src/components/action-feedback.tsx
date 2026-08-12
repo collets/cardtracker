@@ -114,15 +114,23 @@ export function ActionToasts() {
   const [toasts, setToasts] = React.useState<ToastDetail[]>([]);
 
   React.useEffect(() => {
+    const dismissalTimers = new Set<number>();
+
     function receiveToast(event: Event) {
       const toast = (event as CustomEvent<ToastDetail>).detail;
       setToasts((current) => [...current.slice(-2), toast]);
-      window.setTimeout(() => {
+      const timer = window.setTimeout(() => {
+        dismissalTimers.delete(timer);
         setToasts((current) => current.filter((item) => item.id !== toast.id));
       }, 4_500);
+      dismissalTimers.add(timer);
     }
     window.addEventListener(TOAST_EVENT, receiveToast);
-    return () => window.removeEventListener(TOAST_EVENT, receiveToast);
+    return () => {
+      window.removeEventListener(TOAST_EVENT, receiveToast);
+      for (const timer of dismissalTimers) window.clearTimeout(timer);
+      dismissalTimers.clear();
+    };
   }, []);
 
   return (

@@ -33,13 +33,7 @@ import {
   type CatalogExpansionOption,
 } from "@/lib/catalog/search";
 import { requireUser } from "@/lib/auth/guards";
-
-const LANGUAGE_LABELS: Record<string, string> = {
-  en: "English",
-  fr: "French",
-  kr: "Korean",
-  "zh-CN": "Chinese",
-};
+import { SUPPORTED_LANGUAGE_LABELS } from "@/lib/constants";
 
 const FINISH_LABELS: Record<CatalogFilters["finish"], string> = {
   any: "Any finish",
@@ -296,7 +290,7 @@ function ActiveFilters({
   for (const language of filters.languages) {
     pills.push({
       key: `language-${language}`,
-      label: LANGUAGE_LABELS[language] ?? language,
+      label: SUPPORTED_LANGUAGE_LABELS[language],
       href: catalogHref(filters, {
         languages: filters.languages.filter((value) => value !== language),
       }),

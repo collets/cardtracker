@@ -26,7 +26,7 @@ export type MarketplaceFetchJob =
     };
 
 export function planMarketplaceFetches(
-  rows: Array<{ blueprintId: number; expansionId: number }>,
+  rows: ReadonlyArray<{ blueprintId: number; expansionId: number }>,
 ): MarketplaceFetchJob[] {
   const byExpansion = new Map<number, number[]>();
   for (const row of [...rows].sort(
@@ -56,15 +56,17 @@ export function planMarketplaceFetches(
 }
 
 export async function fetchMarketplacePlan(
-  jobs: MarketplaceFetchJob[],
+  jobs: readonly MarketplaceFetchJob[],
   client: MarketplaceProductClient,
   wait: (milliseconds: number) => Promise<void> = (milliseconds) =>
     new Promise((resolve) => setTimeout(resolve, milliseconds)),
 ) {
   const listingsByBlueprint = new Map<number, MarketListing[]>();
   const failures = new Map<number, unknown>();
-  let expansionFetches = 0;
-  let blueprintFetches = 0;
+  const expansionFetches = jobs.filter(
+    (job) => job.kind === "expansion",
+  ).length;
+  const blueprintFetches = jobs.length - expansionFetches;
 
   for (
     let index = 0;
@@ -75,7 +77,6 @@ export async function fetchMarketplacePlan(
     const outcomes = await Promise.allSettled(
       batch.map(async (job) => {
         if (job.kind === "expansion") {
-          expansionFetches += 1;
           return {
             kind: "expansion" as const,
             blueprintIds: job.blueprintIds,
@@ -85,7 +86,6 @@ export async function fetchMarketplacePlan(
             ),
           };
         }
-        blueprintFetches += 1;
         return {
           kind: "blueprint" as const,
           blueprintId: job.blueprintId,

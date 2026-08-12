@@ -29,7 +29,12 @@ import {
 } from "@/components/ui/select";
 import { requireUser } from "@/lib/auth/guards";
 import { getCardTraderBlueprintUrl } from "@/lib/cardtrader/links";
-import { EU_EEA_COUNTRY_CODES } from "@/lib/constants";
+import {
+  CARD_CONDITIONS,
+  EU_EEA_COUNTRY_CODES,
+  SUPPORTED_LANGUAGE_CODES,
+  SUPPORTED_LANGUAGE_LABELS,
+} from "@/lib/constants";
 import { formatEuro } from "@/lib/utils";
 
 export default async function WatchPage({
@@ -180,19 +185,12 @@ export default async function WatchPage({
                     Languages
                   </legend>
                   <div className="flex flex-wrap gap-4">
-                    {(
-                      [
-                        ["en", "English"],
-                        ["fr", "French"],
-                        ["kr", "Korean"],
-                        ["zh-CN", "Chinese"],
-                      ] as const
-                    ).map(([value, label]) => (
+                    {SUPPORTED_LANGUAGE_CODES.map((value) => (
                       <Checkbox
                         key={value}
                         name="languages"
                         value={value}
-                        label={label}
+                        label={SUPPORTED_LANGUAGE_LABELS[value]}
                         defaultChecked={row.watch.languages.includes(value)}
                         containerClassName="text-xs"
                       />
@@ -204,14 +202,7 @@ export default async function WatchPage({
                     Condition
                   </legend>
                   <div className="flex flex-wrap gap-4">
-                    {[
-                      "Mint",
-                      "Near Mint",
-                      "Slightly Played",
-                      "Moderately Played",
-                      "Played",
-                      "Poor",
-                    ].map((condition) => (
+                    {CARD_CONDITIONS.map((condition) => (
                       <Checkbox
                         key={condition}
                         name="conditions"
