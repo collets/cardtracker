@@ -115,6 +115,10 @@ user-owned objects by `userId`. Important actions include watch creation/update,
 manual watch scans, preference changes, Telegram linking, invitations, user
 administration, catalog synchronization, and scanner execution.
 
+An invitation is an administrator-managed allowlist record for Google sign-in;
+Riftwatch does not send invitation email. Administrators can revoke a pending
+invitation, while accepted invitation history remains retained.
+
 When adding an action, treat it as an externally callable mutation: authenticate,
 authorize, validate, perform the smallest mutation, and revalidate or redirect
 only the affected UI paths.

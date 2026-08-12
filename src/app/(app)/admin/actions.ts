@@ -1,6 +1,6 @@
 "use server";
 
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/db";
 import { invitations, users } from "@/db/schema";
@@ -24,6 +24,10 @@ const userUpdateSchema = z.object({
   role: z.enum(["admin", "user"]),
 });
 
+const invitationRevocationSchema = z.object({
+  invitationId: z.uuid(),
+});
+
 export async function inviteUserAction(formData: FormData) {
   const admin = await requireAdmin();
   return actionResult(
@@ -43,6 +47,29 @@ export async function inviteUserAction(formData: FormData) {
     },
     "Invitation saved",
     "The invitation could not be saved. Please retry.",
+  );
+}
+
+export async function revokePendingInvitationAction(formData: FormData) {
+  await requireAdmin();
+  return actionResult(
+    async () => {
+      const { invitationId } = invitationRevocationSchema.parse({
+        invitationId: formData.get("invitationId"),
+      });
+      const [revoked] = await getDb()
+        .delete(invitations)
+        .where(
+          and(eq(invitations.id, invitationId), isNull(invitations.acceptedAt)),
+        )
+        .returning({ id: invitations.id });
+      if (!revoked) {
+        throw new UserFacingError("Pending invitation not found");
+      }
+      revalidatePath("/admin");
+    },
+    "Invitation revoked",
+    "The invitation could not be revoked. Please retry.",
   );
 }
 
