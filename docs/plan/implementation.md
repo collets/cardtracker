@@ -28,3 +28,6 @@
 The remaining item requires project-owner access to Supabase, Vercel, Google,
 and Telegram. Follow `docs/PRODUCTION_ROLLOUT.md`; do not infer hosted completion
 from local checks.
+
+Ideas that are deliberately outside this checklist, together with the parked
+security branch, are recorded in [Future improvements](future-improvements.md).
