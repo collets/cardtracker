@@ -294,7 +294,7 @@ Use `pnpm telegram:webhook:delete` during shutdown or credential rotation.
 
 - [x] Before deploying the feedback UI, create and locally verify the first
       manual production backup described in Section 2.
-- [ ] Apply migration `0002_rare_klaw.sql` from the trusted migration shell. It
+- [x] Apply migration `0002_rare_klaw.sql` from the trusted migration shell. It
       adds one outcome enum and the RLS-enabled `alert_feedback` table; it does
       not rewrite existing alert rows.
 - [ ] Deploy the matching application commit and confirm `/api/health` remains
@@ -315,6 +315,13 @@ through the non-production session-mode connection. A read-only query confirmed
 the `alert_feedback` table, enabled RLS, all six outcome values, and three
 Drizzle migration-history rows. The production migration remains a separate
 operator gate.
+
+Production evidence recorded **2026-08-12**: migration `0002_rare_klaw.sql`
+completed successfully through the verified `aws-0-eu-central-1` session pooler.
+A read-only query confirmed the `alert_feedback` table, enabled RLS, all six
+outcome values, and three Drizzle migration-history rows. No application data was
+rewritten; the matching application deployment and invited-user validation are
+still outstanding.
 
 ## 7. Promote to five-minute scanning
 
