@@ -310,6 +310,12 @@ bottom sheet, desktop dialog, shared success feedback, administrator aggregate,
 and horizontal-overflow checks pass Playwright across every application page.
 These local checks do not mark the hosted migration or user validation complete.
 
+Preview evidence recorded **2026-08-12**: all committed migrations were applied
+through the non-production session-mode connection. A read-only query confirmed
+the `alert_feedback` table, enabled RLS, all six outcome values, and three
+Drizzle migration-history rows. The production migration remains a separate
+operator gate.
+
 ## 7. Promote to five-minute scanning
 
 This promotion is deliberately deferred while a small friends-and-family cohort
