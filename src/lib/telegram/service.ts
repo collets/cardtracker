@@ -11,6 +11,7 @@ import {
   telegramLinkTokens,
   watches,
 } from "@/db/schema";
+import { buildAppUrl } from "@/lib/app-url";
 import { getCardTraderBlueprintUrl } from "@/lib/cardtrader/links";
 import { getServerEnv, requireEnv } from "@/lib/env";
 import { boundedErrorMessage } from "@/lib/errors";
@@ -210,7 +211,7 @@ export async function dispatchPendingNotifications(
       `${discount}% below market · ${row.alert.confidence} confidence`,
       `Seller: ${row.alert.candidate.seller.username} (${row.alert.candidate.seller.countryCode ?? "unknown"})`,
       `Listing ID: ${row.alert.productId}`,
-      `${env.NEXT_PUBLIC_APP_URL}/alerts`,
+      buildAppUrl(env.NEXT_PUBLIC_APP_URL, "/alerts"),
     ].join("\n");
     try {
       await sendTelegramMessage(
