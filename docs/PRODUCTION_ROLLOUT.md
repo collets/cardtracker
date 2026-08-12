@@ -51,11 +51,17 @@ five-minute scanning is deferred and no paid-plan change is currently planned.
 - [x] Choose the no-cost manual logical-backup position and add guarded backup,
       checksum, disposable local restore verification, and operator
       documentation in [Database recovery](DATABASE_RECOVERY.md).
-- [ ] Install PostgreSQL 17 client tools on the trusted operator workstation,
+- [x] Install PostgreSQL 17 client tools on the trusted operator workstation,
       run `pnpm db:backup -- --output <external-directory> --allow-hosted`, and
       verify that archive with `pnpm db:restore:verify -- --file <archive>`.
       Record only the archive and verification timestamps in private operator
       notes. Do not invite the validation cohort until this succeeds.
+
+Recovery evidence recorded **2026-08-12**: a production logical archive and its
+integrity manifest were created at 17:48 UTC with owner-only file permissions.
+At 17:49 UTC, its checksum, application schema, Drizzle migration history, and
+core data queries passed a disposable local PostgreSQL 17 restore. The verifier
+then removed the temporary database. No hosted write or restore was performed.
 
 Supabase recommends transaction pooling for temporary/serverless application
 traffic and direct connections for migrations and native PostgreSQL tools:
@@ -286,7 +292,7 @@ Use `pnpm telegram:webhook:delete` during shutdown or credential rotation.
 
 ### Deploy structured validation feedback
 
-- [ ] Before deploying the feedback UI, create and locally verify the first
+- [x] Before deploying the feedback UI, create and locally verify the first
       manual production backup described in Section 2.
 - [ ] Apply migration `0002_rare_klaw.sql` from the trusted migration shell. It
       adds one outcome enum and the RLS-enabled `alert_feedback` table; it does

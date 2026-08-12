@@ -261,6 +261,11 @@ async function verifyRestore() {
     await maintenance.unsafe(
       `create database ${quotedIdentifier(databaseName)}`,
     );
+    restored = postgres(restoreUrl, { max: 1, prepare: false });
+    await restored`drop schema if exists public cascade`;
+    await restored.end();
+    restored = undefined;
+
     print(`Restoring into disposable local database ${databaseName}…`);
     runTool(
       "pg_restore",
