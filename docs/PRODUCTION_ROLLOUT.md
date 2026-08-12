@@ -9,10 +9,12 @@ The initial rollout uses Vercel's daily Hobby-compatible smoke schedule. Do not
 enable minute-level scanning until the daily deployment is healthy and the
 Vercel plan change has been approved.
 
-Status updated **2026-08-11**: repository controls, the initial Supabase
-database migration, and the production Vercel database connection are complete.
-Production Google authentication and the isolated Preview environment remain to
-be configured before the hosted smoke rollout.
+Status updated **2026-08-12**: repository controls, the initial Supabase
+database migration, the production Vercel database connection, production
+Google authentication, and the daily hosted smoke checks are complete. Preview
+Google authentication is intentionally deferred until the project adopts a
+stable Preview origin and an isolated OAuth client. The initial production
+telemetry review is complete.
 
 ## 1. Review and repository controls
 
@@ -164,17 +166,23 @@ for environment scoping.
 
 ## 4. Configure Google sign-in
 
-- [ ] Create a Google OAuth **Web application** client for the owned production
+- [x] Create a Google OAuth **Web application** client for the owned production
       domain.
-- [ ] Configure the authorized JavaScript origin as the exact HTTPS origin.
-- [ ] Configure the exact redirect URI as
+- [x] Configure the authorized JavaScript origin as the exact HTTPS origin.
+- [x] Configure the exact redirect URI as
       `https://<production-host>/api/auth/callback/google`.
-- [ ] Configure the OAuth consent screen, homepage, privacy policy, support
+- [x] Configure the OAuth consent screen, homepage, privacy policy, support
       contact, and test/published audience required by Google.
-- [ ] Store the client ID and secret only in Vercel Production variables.
-- [ ] Sign in with `ADMIN_EMAIL` and confirm the user is provisioned as an
+- [x] Store the client ID and secret only in Vercel Production variables.
+- [x] Sign in with `ADMIN_EMAIL` and confirm the user is provisioned as an
       administrator.
-- [ ] Invite a second test address and confirm an uninvited address is rejected.
+- [x] Invite a second test address and confirm an uninvited address is rejected.
+
+Production Google sign-in is operational. Preview Google sign-in is deferred:
+before enabling it, choose a stable branch or custom Preview origin, create a
+separate Google OAuth client, and use isolated Preview credentials. Do not add
+arbitrary deployment URLs to the production client's allowlist and do not reuse
+its secret in Preview.
 
 Google requires exact, HTTPS production redirect URI matching; see the
 [Google web-server OAuth guide](https://developers.google.com/identity/protocols/oauth2/web-server)
@@ -182,20 +190,38 @@ and [OAuth policies](https://developers.google.com/identity/protocols/oauth2/pol
 
 ## 5. Daily hosted smoke rollout
 
-- [ ] Deploy `main` with the daily schedules in `vercel.json`.
-- [ ] Run `pnpm smoke:hosted -- --url https://<production-host>` without an
+- [x] Deploy `main` with the daily schedules in `vercel.json`.
+- [x] Run `pnpm smoke:hosted -- --url https://<production-host>` without an
       authorization flag. Confirm health, public pages, sign-in redirects, and
       cron rejection all pass.
-- [ ] Run `pnpm smoke:hosted -- --url https://<production-host> --run-catalog`
+- [x] Run `pnpm smoke:hosted -- --url https://<production-host> --run-catalog`
       from a secure shell containing the matching `CRON_SECRET`.
-- [ ] Sign in, confirm the Riftbound catalog is populated, and create one watch.
-- [ ] Run an explicit market scan with
+- [x] Sign in, confirm the Riftbound catalog is populated, and create one watch.
+- [x] Run an explicit market scan with
       `pnpm smoke:hosted -- --url https://<production-host> --run-scan`.
-- [ ] Confirm the watch metric, observation, and scan run are present.
-- [ ] Run `pnpm ops:status -- --allow-hosted` with the production pooled
+- [x] Confirm the watch metric, observation, and scan run are present.
+- [x] Run `pnpm ops:status -- --allow-hosted` with the production pooled
       `DATABASE_URL` in a secure environment and save only its aggregate output.
-- [ ] Leave the daily schedule active for at least one observation window and
-      review Vercel function logs and Supabase connection usage.
+- [x] Leave the daily schedule active for at least one observation window and
+      confirm scheduled catalog and market runs succeed.
+- [x] Review Vercel function logs and Supabase connection usage in their
+      provider dashboards.
+
+Smoke evidence recorded **2026-08-12**: the public boundary checks passed, an
+authorized catalog run synchronized 1,521 blueprints, and an authorized market
+run successfully scanned both due blueprints with no failures. Three current
+watch metrics, three hourly observations, and one recent successful market run
+were present. The aggregate status reported three active watches across two
+blueprints, zero stale blueprints, zero failed or partial runs in the preceding
+24 hours, and zero failed notification deliveries. The retained daily catalog
+and market jobs also had successful runs in their scheduled observation windows.
+The reviewed Vercel window contained only expected successful responses, the
+unauthenticated dashboard redirect, and deliberate cron-authentication
+rejections; it contained no warnings, errors, or server failures. Supabase had
+no connection-exhaustion evidence. Its repeated `3F000` entries were the known
+PostgREST placeholder-schema noise caused by the intentionally disabled Data
+API, not application database failures. No credential values or user-level
+records were included in the evidence.
 
 Vercel Cron invokes production GET routes, does not retry failures, may overlap,
 and may deliver an event more than once. Riftwatch's PostgreSQL leases and
