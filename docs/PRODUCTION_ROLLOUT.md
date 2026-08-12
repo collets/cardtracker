@@ -9,30 +9,38 @@ The initial rollout uses Vercel's daily Hobby-compatible smoke schedule. Do not
 enable minute-level scanning until the daily deployment is healthy and the
 Vercel plan change has been approved.
 
+Status updated **2026-08-11**: repository controls, the initial Supabase
+database migration, and the production Vercel database connection are complete.
+Production Google authentication and the isolated Preview environment remain to
+be configured before the hosted smoke rollout.
+
 ## 1. Review and repository controls
 
-- [ ] Review and merge `agent/production-readiness` into `main` after CI passes.
-- [ ] Confirm GitHub secret scanning reports no exposed credential.
-- [ ] Protect `main` and require the CI `verify` and `secrets` jobs.
-- [ ] Record who can administer GitHub, Vercel, Supabase, Google OAuth, and the
+- [x] Review and merge `agent/production-readiness` into `main` after CI passes.
+- [x] Confirm GitHub secret scanning reports no exposed credential.
+- [x] Protect `main` and require the CI `verify` and `secrets` jobs.
+- [x] Record who can administer GitHub, Vercel, Supabase, Google OAuth, and the
       Telegram bot.
 
 ## 2. Provision PostgreSQL
 
-- [ ] Create one Supabase project in **Central EU (Frankfurt)** or another
+- [x] Create one Supabase project in **Central EU (Frankfurt)** or another
       explicitly selected EU region.
-- [ ] Generate a unique database password and store it in the team's password
-      manager.
-- [ ] Copy the transaction-mode pooler URL on port `6543` for `DATABASE_URL`.
-- [ ] Copy the direct URL on port `5432` for `DATABASE_URL_DIRECT`. If the
+- [x] Generate a unique database password.
+- [x] Confirm the database password is stored in the team's password manager.
+- [x] Copy the transaction-mode pooler URL on port `6543` for `DATABASE_URL`.
+- [x] Copy the direct URL on port `5432` for `DATABASE_URL_DIRECT`. If the
       migration workstation cannot reach the IPv6 direct endpoint, use the
       session-mode pooler on port `5432` for this one-session operation.
-- [ ] Confirm SSL is enabled in both connection strings.
-- [ ] Apply committed migrations with `pnpm db:migrate` from a trusted machine
+- [x] Confirm Supabase enforces SSL for incoming database connections.
+- [x] Apply committed migrations with `pnpm db:migrate` from a trusted machine
       where `DATABASE_URL_DIRECT` is present in the process environment. Do not
       paste either URL into shell history, logs, issues, or chat.
-- [ ] Confirm the migration command reports success and `/api/health` can query
-      the resulting schema after deployment.
+- [x] Confirm the migration command reports success, the Riftwatch tables exist
+      in `public`, and `drizzle.__drizzle_migrations` contains both committed
+      migrations.
+- [x] After the first Vercel deployment, confirm `/api/health` reports
+      `database: "connected"` through the pooled production `DATABASE_URL`.
 - [ ] Review Supabase backup and restore coverage before inviting users. Point-in-
       time recovery is a separate paid capability and must not be enabled without
       approval.
@@ -43,11 +51,86 @@ traffic and direct connections for migrations and native PostgreSQL tools:
 Region availability is documented in the
 [Supabase region guide](https://supabase.com/docs/guides/platform/regions).
 
+### Secure migration-shell procedure
+
+The trusted migration shell is a terminal on an operator-controlled workstation
+with the Riftwatch repository checked out. Keep the canonical password and
+connection strings in the team's password manager. Do not save hosted database
+URLs in `.env.local`, because local lifecycle commands must remain connected to
+Docker PostgreSQL.
+
+Percent-encode a database password without placing the raw value in shell
+history:
+
+```sh
+read -rs 'DB_PASSWORD?Supabase database password: '
+echo
+DB_PASSWORD="$DB_PASSWORD" node -e 'console.log(encodeURIComponent(process.env.DB_PASSWORD))'
+unset DB_PASSWORD
+```
+
+Encode only the password component—never pass the complete connection URL to
+`encodeURIComponent`. The `postgresql://` scheme, username, `@`, hostname, port,
+and database path must remain literal. The encoded output remains a credential.
+Insert it into the direct connection string in the password manager, ensure the
+URL enables SSL, and do not paste the completed URL into chat, logs, or
+repository files.
+
+Load the completed direct URL invisibly for one migration session:
+
+```sh
+read -rs 'DATABASE_URL_DIRECT?Supabase direct connection URL: '
+echo
+export DATABASE_URL_DIRECT
+node -e 'const u = new URL(process.env.DATABASE_URL_DIRECT); console.log({ hostname: u.hostname, port: u.port, database: u.pathname })'
+pnpm db:migrate
+unset DATABASE_URL_DIRECT
+```
+
+The verification command deliberately prints only the non-secret destination.
+It must show either the expected `db.<project-ref>` direct hostname or the
+expected `aws-<region>.pooler.supabase.com` session-pooler hostname, together
+with port `5432` and database `/postgres`. Stop if it instead shows a local host,
+an unexpected project reference or region, port `6543`, or an empty value.
+
+If the direct endpoint fails with `connect ENETUNREACH` and an IPv6 address, the
+workstation has no route to Supabase's IPv6-only direct endpoint. Do not keep
+retrying it and do not purchase an IPv4 add-on merely for migrations. Copy the
+project's **session-mode pooler** URL from Supabase Connect, ensure it uses port
+`5432`, and load that complete URL as `DATABASE_URL_DIRECT` with the same
+procedure. The session pooler is suitable for this one-session migration; the
+transaction pooler on port `6543` remains the application runtime URL.
+
+Drizzle may report that the `drizzle` schema and `__drizzle_migrations` relation
+already exist. Those idempotent PostgreSQL notices are expected and do not prove
+that the application tables were created. Supabase's migration UI and CLI track
+only Supabase CLI migrations in `supabase_migrations.schema_migrations`; they do
+not display the repository's Drizzle migration history. For Riftwatch,
+`drizzle.__drizzle_migrations` is the authoritative remote ledger. In the
+Supabase SQL Editor, verify the remote catalog without modifying it:
+
+```sql
+select table_schema, table_name
+from information_schema.tables
+where table_schema in ('public', 'drizzle')
+order by table_schema, table_name;
+
+select count(*) as applied_migrations
+from drizzle.__drizzle_migrations;
+```
+
+The current repository contains two migrations. A successful initial migration
+therefore produces the Riftwatch tables in `public` and reports two applied
+migrations. If the `drizzle` objects are absent, the command likely connected to
+a different database. If two migrations are recorded but the public tables are
+absent, stop and investigate the inconsistent migration metadata; do not delete
+or rewrite it.
+
 ## 3. Configure the Vercel project
 
-- [ ] Import `collets/cardtracker` into Vercel and select `main` as the production
+- [x] Import `collets/cardtracker` into Vercel and select `main` as the production
       branch.
-- [ ] Confirm the function region is `fra1`, as committed in `vercel.json`.
+- [x] Confirm the function region is `fra1`, as committed in `vercel.json`.
 - [ ] Keep the committed daily catalog and market cron schedules for the first
       deployment.
 - [ ] Configure the variables below separately for Production and Preview.
