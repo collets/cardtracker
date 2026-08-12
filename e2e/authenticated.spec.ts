@@ -126,7 +126,29 @@ test.describe.serial("authenticated MVP", () => {
 
   test("user can save marketplace defaults", async ({ page }) => {
     await signIn(page, e2eAdminEmail);
+    await expect(page.getByRole("link", { name: "Overview" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+
+    await page.goto("/cards");
+    const sidebar = page.getByRole("complementary");
+    await expect(sidebar).toHaveCSS("position", "sticky");
+    await expect(sidebar).toHaveCSS("flex-direction", "column");
+    const overviewLink = page.getByRole("link", { name: "Overview" });
+    const accountLink = page.getByRole("link", { name: "Account" });
+    await expect(accountLink).toBeInViewport();
+    await expect(accountLink).toHaveCSS(
+      "width",
+      await overviewLink.evaluate((element) => getComputedStyle(element).width),
+    );
+
     await page.goto("/settings");
+    await expect(page.getByRole("heading", { name: "Account" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Account" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
     await page.getByRole("checkbox", { name: "French" }).check();
     await page.getByRole("button", { name: "Save defaults" }).click();
     await expect(page.getByRole("checkbox", { name: "French" })).toBeChecked();

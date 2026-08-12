@@ -28,7 +28,7 @@ import {
   SUPPORTED_LANGUAGE_LABELS,
 } from "@/lib/constants";
 
-export default async function SettingsPage() {
+export default async function AccountPage() {
   const sessionUser = await requireUser();
   const [account, preferences, telegram] = await Promise.all([
     getDb()
@@ -54,7 +54,7 @@ export default async function SettingsPage() {
     <>
       <PageHeading
         eyebrow="Account"
-        title="Settings"
+        title="Account"
         description={`${account?.email ?? sessionUser.email} · ${account?.watchQuota ?? 50} watch quota`}
       />
       <div className="grid gap-6 lg:grid-cols-2">
