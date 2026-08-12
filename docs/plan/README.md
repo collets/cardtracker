@@ -13,4 +13,6 @@ For hands-on setup and contribution workflows, see
 - [Data and signals](data-and-signals.md): persistence and deal evaluation.
 - [Operations](operations.md): environments, scheduling, cost, and runbooks.
 - [Implementation](implementation.md): delivery stages and acceptance criteria.
+- [Future improvements](future-improvements.md): deferred ideas, operational
+  gates, and parked implementation branches.
 - [Calibration reports](../reports/): dated, aggregate-only marketplace research.
