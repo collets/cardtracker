@@ -26,3 +26,6 @@ test-results/
 
 # The downloaded collection contains an embedded credential. Keep the raw file local.
 card_trader_postman_collection.json
+
+# Local strategy research is intentionally retained outside version control.
+docs/strategy/
