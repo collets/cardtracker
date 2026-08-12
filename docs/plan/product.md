@@ -31,3 +31,7 @@ cart or purchases a product.
 - The watchlist can refresh every active watched printing in one user-scoped
   request. The scanner deduplicates those printings and applies its adaptive
   expansion batching without exposing administrator-wide scan access.
+- Each alert can be rated in one tap as purchased, useful but skipped,
+  unavailable, not a real deal, wrong details, or shipping too expensive. The
+  latest answer is editable, marks the alert read, and feeds an administrator
+  aggregate without collecting free-form text.

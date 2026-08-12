@@ -31,9 +31,9 @@ Last reviewed: **2026-08-12**.
 | Cardmarket             | Candidate             | Add Cardmarket as a distinct marketplace provider                                                                                         | API access, terms, normalization, and provider-specific deal semantics are understood |
 | Invitation delivery    | Candidate             | Send an actual invitation email while preserving the database allowlist as the authorization source                                       | A transactional email provider and sender domain are approved                         |
 | Telegram diagnostics   | Candidate             | Let a linked user send a safe test notification from Account settings                                                                     | The desired abuse controls and audit behavior are agreed                              |
-| Deal calibration       | Candidate             | Tune thresholds and confidence using multi-day evidence, without weakening sparse-data rejection                                          | Enough observations and false-positive/false-negative feedback exist                  |
+| Deal calibration       | Candidate             | Tune thresholds and confidence using multi-day evidence, without weakening sparse-data rejection                                          | Enough observations and structured alert outcomes exist                               |
 | Faster scanning        | Operational gate      | Move from the daily smoke schedule to five-minute market coverage                                                                         | The paid Vercel plan and usage budget are explicitly approved                         |
-| Recovery               | Operational gate      | Define and test hosted backup restoration; optionally add point-in-time recovery                                                          | Retention requirements and any Supabase paid-plan change are approved                 |
+| Recovery               | Operational gate      | Operate and retain the manual logical-backup workflow; optionally add managed backups or point-in-time recovery                           | The first archive is locally verified, then retention needs justify any paid upgrade  |
 
 ## Automated manual production releases
 

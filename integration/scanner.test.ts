@@ -2,6 +2,7 @@ import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { getDb, getSql } from "@/db";
 import {
+  alertFeedback,
   alerts,
   blueprints,
   blueprintScanState,
@@ -10,11 +11,13 @@ import {
   priceObservations,
   scanRuns,
   telegramChannels,
+  telegramLinkTokens,
   userPreferences,
   users,
   watches,
   watchMetrics,
 } from "@/db/schema";
+import { saveAlertFeedback } from "@/lib/alerts/service";
 import type { MarketListing } from "@/lib/cardtrader/types";
 import {
   claimDueBlueprints,
@@ -23,7 +26,11 @@ import {
   scanBlueprint,
   scanUserWatchlist,
 } from "@/lib/scanner/service";
-import { dispatchPendingNotifications } from "@/lib/telegram/service";
+import {
+  createTelegramLink,
+  dispatchPendingNotifications,
+  handleTelegramUpdate,
+} from "@/lib/telegram/service";
 
 const expansionId = 990_001;
 const blueprintId = 990_001;
@@ -640,5 +647,85 @@ describe("scanner persistence", () => {
         .from(priceObservations)
         .where(inArray(priceObservations.watchId, [...watchIds])),
     ).resolves.toHaveLength(0);
+  });
+
+  it("stores one editable feedback outcome only for the alert owner", async () => {
+    await scanBlueprint(blueprintId, {
+      marketplaceProducts: vi.fn().mockResolvedValue(qualifyingListings),
+    });
+    const [ownedAlert] = await getDb()
+      .select({ id: alerts.id })
+      .from(alerts)
+      .where(eq(alerts.watchId, watchIds[0]))
+      .limit(1);
+    if (!ownedAlert) throw new Error("Feedback alert fixture was not created");
+
+    await expect(
+      saveAlertFeedback(userIds[0], ownedAlert.id, "purchased"),
+    ).resolves.toBeUndefined();
+    await expect(
+      saveAlertFeedback(userIds[0], ownedAlert.id, "useful"),
+    ).resolves.toBeUndefined();
+    await expect(
+      saveAlertFeedback(userIds[1], ownedAlert.id, "not_a_deal"),
+    ).rejects.toThrow("Alert not found");
+
+    await expect(
+      getDb()
+        .select({ outcome: alertFeedback.outcome })
+        .from(alertFeedback)
+        .where(eq(alertFeedback.alertId, ownedAlert.id)),
+    ).resolves.toEqual([{ outcome: "useful" }]);
+    const [updatedAlert] = await getDb()
+      .select({ readAt: alerts.readAt })
+      .from(alerts)
+      .where(eq(alerts.id, ownedAlert.id));
+    expect(updatedAlert?.readAt).toBeInstanceOf(Date);
+  });
+
+  it("atomically consumes a Telegram link token under concurrent replay", async () => {
+    const linkUrl = await createTelegramLink(userIds[0]);
+    const token = new URL(linkUrl).searchParams.get("start");
+    if (!token) throw new Error("Telegram link did not contain a token");
+    const telegramFetch = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+
+    const results = await Promise.all([
+      handleTelegramUpdate(
+        {
+          message: {
+            text: `/start ${token}`,
+            chat: { id: "integration-replay-a", username: "first" },
+          },
+        },
+        telegramFetch,
+      ),
+      handleTelegramUpdate(
+        {
+          message: {
+            text: `/start ${token}`,
+            chat: { id: "integration-replay-b", username: "second" },
+          },
+        },
+        telegramFetch,
+      ),
+    ]);
+
+    expect(results.filter((result) => result.handled)).toHaveLength(1);
+    expect(telegramFetch).toHaveBeenCalledOnce();
+    const [storedToken] = await getDb()
+      .select({ usedAt: telegramLinkTokens.usedAt })
+      .from(telegramLinkTokens)
+      .where(eq(telegramLinkTokens.userId, userIds[0]))
+      .limit(1);
+    expect(storedToken?.usedAt).toBeInstanceOf(Date);
+    const [channel] = await getDb()
+      .select({ chatId: telegramChannels.chatId })
+      .from(telegramChannels)
+      .where(eq(telegramChannels.userId, userIds[0]));
+    expect(["integration-replay-a", "integration-replay-b"]).toContain(
+      channel?.chatId,
+    );
   });
 });

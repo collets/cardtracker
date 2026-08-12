@@ -12,6 +12,7 @@ export function AppNav({ role }: { role: "admin" | "user" }) {
     <aside className="flex border-b bg-slate-950/70 px-4 py-3 backdrop-blur lg:sticky lg:top-0 lg:h-dvh lg:w-64 lg:shrink-0 lg:flex-col lg:self-start lg:overflow-hidden lg:border-r lg:border-b-0 lg:p-5">
       <Link
         href="/dashboard"
+        aria-label="Riftwatch home"
         className="mr-6 flex shrink-0 items-center gap-2 font-semibold lg:mr-0 lg:mb-8"
       >
         <span className="grid size-8 place-items-center rounded-lg bg-cyan-300 text-slate-950">
@@ -32,6 +33,7 @@ export function AppNav({ role }: { role: "admin" | "user" }) {
             type="submit"
             variant="ghost"
             className="w-full justify-start text-slate-400"
+            aria-label="Sign out"
           >
             <LogOut className="size-4" />
             <span className="hidden sm:inline">Sign out</span>

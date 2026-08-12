@@ -40,6 +40,14 @@ export const deliveryStatusEnum = pgEnum("delivery_status", [
   "sent",
   "failed",
 ]);
+export const alertFeedbackOutcomeEnum = pgEnum("alert_feedback_outcome", [
+  "purchased",
+  "useful",
+  "unavailable",
+  "not_a_deal",
+  "wrong_details",
+  "shipping_too_expensive",
+]);
 
 export const users = pgTable(
   "users",
@@ -361,6 +369,28 @@ export const alerts = pgTable(
       table.productId,
     ),
     index("alerts_watch_state_idx").on(table.watchId, table.state),
+  ],
+);
+
+export const alertFeedback = pgTable(
+  "alert_feedback",
+  {
+    alertId: uuid("alert_id")
+      .primaryKey()
+      .references(() => alerts.id, { onDelete: "cascade" }),
+    outcome: alertFeedbackOutcomeEnum("outcome").notNull(),
+    createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("alert_feedback_outcome_updated_idx").on(
+      table.outcome,
+      table.updatedAt,
+    ),
   ],
 );
 

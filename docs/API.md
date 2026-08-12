@@ -113,7 +113,12 @@ Authenticated UI mutations use server actions rather than public REST routes.
 Actions recheck the database user and role, validate form data, and scope
 user-owned objects by `userId`. Important actions include watch creation/update,
 manual watch scans, preference changes, Telegram linking, invitations, user
-administration, catalog synchronization, and scanner execution.
+administration, alert feedback, catalog synchronization, and scanner execution.
+
+Alert feedback accepts one fixed outcome for an alert owned by the authenticated
+user. Saving feedback also marks that alert as read. A later answer replaces the
+earlier answer so each alert contributes only its latest outcome to aggregate
+validation.
 
 An invitation is an administrator-managed allowlist record for Google sign-in;
 Riftwatch does not send invitation email. Administrators can revoke a pending
