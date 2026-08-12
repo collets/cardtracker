@@ -5,6 +5,7 @@ import {
   alerts,
   blueprints,
   expansions,
+  invitations,
   userPreferences,
   users,
   watches,
@@ -20,8 +21,14 @@ const e2eUserIds = [
 const e2eExpansionId = 980_001;
 export const e2eWatchBlueprintId = 980_001;
 export const e2eAlertBlueprintId = 980_002;
+export const e2ePendingInviteEmail = "e2e-pending@riftwatch.test";
+export const e2eAcceptedInviteEmail = "e2e-accepted@riftwatch.test";
 const e2eAlertWatchId = "00000000-0000-4000-8000-000000000811";
 const e2eAlertId = "00000000-0000-4000-8000-000000000821";
+const e2eInvitationIds = [
+  "00000000-0000-4000-8000-000000000831",
+  "00000000-0000-4000-8000-000000000832",
+] as const;
 
 function databaseUrl() {
   const url =
@@ -47,6 +54,9 @@ async function withDatabase<T>(
 
 export async function cleanE2eFixtures() {
   await withDatabase(async (db) => {
+    await db
+      .delete(invitations)
+      .where(inArray(invitations.id, [...e2eInvitationIds]));
     await db.delete(expansions).where(eq(expansions.id, e2eExpansionId));
     await db.delete(users).where(inArray(users.id, [...e2eUserIds]));
   });
@@ -77,6 +87,21 @@ export async function seedE2eFixtures() {
         conditions: ["Mint", "Near Mint"],
       })),
     );
+    await db.insert(invitations).values([
+      {
+        id: e2eInvitationIds[0],
+        email: e2ePendingInviteEmail,
+        role: "user",
+        invitedBy: e2eUserIds[0],
+      },
+      {
+        id: e2eInvitationIds[1],
+        email: e2eAcceptedInviteEmail,
+        role: "user",
+        invitedBy: e2eUserIds[0],
+        acceptedAt: new Date(),
+      },
+    ]);
     await db.insert(expansions).values({
       id: e2eExpansionId,
       gameId: 22,
