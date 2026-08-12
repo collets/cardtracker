@@ -71,4 +71,24 @@ describe("catalog selection", () => {
       JSON.parse(sessionStorage.getItem("riftwatch:catalog-selection:v1")!),
     ).toHaveLength(0);
   });
+
+  it("ignores malformed stored entries without discarding valid cards", () => {
+    sessionStorage.setItem(
+      "riftwatch:catalog-selection:v1",
+      JSON.stringify([
+        firstPage[0],
+        null,
+        { id: -1, name: "Invalid", printing: "Invalid" },
+        { id: 2, name: 42, printing: "Invalid" },
+      ]),
+    );
+
+    render(
+      <CatalogSelectionProvider>
+        <CatalogPageSelection cards={secondPage} />
+      </CatalogSelectionProvider>,
+    );
+
+    expect(screen.getByText("1 selected across the catalog")).toBeVisible();
+  });
 });

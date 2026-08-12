@@ -16,14 +16,8 @@ import {
   DEFAULT_MIN_SAVINGS_CENTS,
   EU_EEA_COUNTRY_CODES,
   SUPPORTED_LANGUAGE_CODES,
+  SUPPORTED_LANGUAGE_LABELS,
 } from "@/lib/constants";
-
-const LANGUAGE_LABELS: Record<string, string> = {
-  en: "English",
-  fr: "French",
-  kr: "Korean",
-  "zh-CN": "Chinese",
-};
 
 export type WatchFormDefaults = {
   languages?: readonly string[];
@@ -58,7 +52,7 @@ export function WatchOptionsFields({
               key={value}
               name="languages"
               value={value}
-              label={LANGUAGE_LABELS[value] ?? value}
+              label={SUPPORTED_LANGUAGE_LABELS[value]}
               defaultChecked={languages.includes(value)}
               containerClassName="text-xs"
             />

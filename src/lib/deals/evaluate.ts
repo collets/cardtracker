@@ -67,14 +67,17 @@ export function evaluateDeal(
   ].filter((value): value is number => value !== null);
   const referencePriceCents =
     availableBaselines.length > 0 ? Math.min(...availableBaselines) : null;
+  const baseline = {
+    candidate,
+    eligibleListings,
+    currentBaselineCents,
+    historicalBaselineCents,
+    referencePriceCents,
+  };
 
   if (!candidate || eligibleListings.length < 4) {
     return {
-      candidate,
-      eligibleListings,
-      currentBaselineCents,
-      historicalBaselineCents,
-      referencePriceCents,
+      ...baseline,
       savingsCents: null,
       discountBps: null,
       confidence: null,
@@ -85,11 +88,7 @@ export function evaluateDeal(
 
   if (!referencePriceCents || referencePriceCents <= 0) {
     return {
-      candidate,
-      eligibleListings,
-      currentBaselineCents,
-      historicalBaselineCents,
-      referencePriceCents,
+      ...baseline,
       savingsCents: null,
       discountBps: null,
       confidence: null,
@@ -108,11 +107,7 @@ export function evaluateDeal(
   const absoluteQualifies = savingsCents >= filters.minSavingsCents;
 
   return {
-    candidate,
-    eligibleListings,
-    currentBaselineCents,
-    historicalBaselineCents,
-    referencePriceCents,
+    ...baseline,
     savingsCents,
     discountBps,
     confidence,

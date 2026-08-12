@@ -25,6 +25,7 @@ import {
   DEFAULT_CONDITIONS,
   EU_EEA_COUNTRY_CODES,
   SUPPORTED_LANGUAGE_CODES,
+  SUPPORTED_LANGUAGE_LABELS,
 } from "@/lib/constants";
 
 export default async function SettingsPage() {
@@ -98,14 +99,7 @@ export default async function SettingsPage() {
                       defaultChecked={(
                         preferences?.languages ?? ["en"]
                       ).includes(value)}
-                      label={
-                        {
-                          en: "English",
-                          fr: "French",
-                          kr: "Korean",
-                          "zh-CN": "Chinese",
-                        }[value]
-                      }
+                      label={SUPPORTED_LANGUAGE_LABELS[value]}
                     />
                   ))}
                 </div>

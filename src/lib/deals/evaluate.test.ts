@@ -118,6 +118,19 @@ describe("deal evaluation", () => {
   });
 
   it("requires both percentage and absolute thresholds", () => {
+    const percentageMiss = evaluateDeal(
+      [
+        listing(2800),
+        listing(3000),
+        listing(3100),
+        listing(3200),
+        listing(3300),
+      ],
+      { ...filters, minSavingsCents: 0 },
+    );
+    expect(percentageMiss.qualifies).toBe(false);
+    expect(percentageMiss.rejectionReason).toBe("below-percentage-threshold");
+
     const absoluteMiss = evaluateDeal(
       [
         listing(2600),
@@ -130,5 +143,16 @@ describe("deal evaluation", () => {
     );
     expect(absoluteMiss.qualifies).toBe(false);
     expect(absoluteMiss.rejectionReason).toBe("below-absolute-threshold");
+  });
+
+  it("rejects a non-positive comparator baseline", () => {
+    const result = evaluateDeal(
+      [listing(0, 1), listing(0, 2), listing(0, 3), listing(0, 4)],
+      { ...filters, minSavingsCents: 0 },
+    );
+
+    expect(result.qualifies).toBe(false);
+    expect(result.referencePriceCents).toBe(0);
+    expect(result.rejectionReason).toBe("no-reference-price");
   });
 });

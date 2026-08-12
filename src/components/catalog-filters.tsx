@@ -35,15 +35,12 @@ import type {
   CatalogExpansionOption,
   CatalogRarityOption,
 } from "@/lib/catalog/search";
+import {
+  SUPPORTED_LANGUAGE_CODES,
+  SUPPORTED_LANGUAGE_LABELS,
+} from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import type { WatchFormDefaults } from "@/components/watch-options-fields";
-
-const LANGUAGE_OPTIONS = [
-  ["en", "English"],
-  ["fr", "French"],
-  ["kr", "Korean"],
-  ["zh-CN", "Chinese"],
-] as const;
 
 type CatalogFilterProps = {
   filters: CatalogFilters;
@@ -313,14 +310,14 @@ function CatalogFilterForm({
       <fieldset>
         <legend className="text-sm font-medium">Language availability</legend>
         <div className="mt-3 grid grid-cols-2 gap-2">
-          {LANGUAGE_OPTIONS.map(([value, label]) => (
+          {SUPPORTED_LANGUAGE_CODES.map((value) => (
             <Checkbox
               key={value}
               name="language"
               value={value}
               defaultChecked={filters.languages.includes(value)}
               containerClassName="text-xs"
-              label={label}
+              label={SUPPORTED_LANGUAGE_LABELS[value]}
             />
           ))}
         </div>

@@ -7,6 +7,7 @@ import {
   RIFTBOUND_GAME_ID,
   RIFTBOUND_SINGLES_CATEGORY_ID,
 } from "@/lib/constants";
+import { boundedErrorMessage } from "@/lib/errors";
 
 export async function synchronizeCatalog(client = new CardTraderClient()) {
   const [run] = await getDb()
@@ -53,48 +54,45 @@ export async function synchronizeCatalog(client = new CardTraderClient()) {
       blueprintCount += remoteBlueprints.length;
       for (const blueprint of remoteBlueprints) {
         const fixed = blueprint.fixed_properties;
+        const collectorNumber =
+          typeof fixed.collector_number === "string"
+            ? fixed.collector_number
+            : null;
+        const rarity =
+          typeof fixed.riftbound_rarity === "string"
+            ? fixed.riftbound_rarity
+            : null;
+        const values = {
+          id: blueprint.id,
+          expansionId: blueprint.expansion_id,
+          gameId: blueprint.game_id,
+          categoryId: blueprint.category_id,
+          name: blueprint.name,
+          version: blueprint.version ?? null,
+          collectorNumber,
+          rarity,
+          imageUrl: blueprint.image_url ?? null,
+          fixedProperties: fixed,
+          editableProperties: blueprint.editable_properties,
+          active: true,
+          syncedAt: now,
+        };
         await getDb()
           .insert(blueprints)
-          .values({
-            id: blueprint.id,
-            expansionId: blueprint.expansion_id,
-            gameId: blueprint.game_id,
-            categoryId: blueprint.category_id,
-            name: blueprint.name,
-            version: blueprint.version ?? null,
-            collectorNumber:
-              typeof fixed.collector_number === "string"
-                ? fixed.collector_number
-                : null,
-            rarity:
-              typeof fixed.riftbound_rarity === "string"
-                ? fixed.riftbound_rarity
-                : null,
-            imageUrl: blueprint.image_url ?? null,
-            fixedProperties: fixed,
-            editableProperties: blueprint.editable_properties,
-            active: true,
-            syncedAt: now,
-          })
+          .values(values)
           .onConflictDoUpdate({
             target: blueprints.id,
             set: {
-              expansionId: blueprint.expansion_id,
-              name: blueprint.name,
-              version: blueprint.version ?? null,
-              collectorNumber:
-                typeof fixed.collector_number === "string"
-                  ? fixed.collector_number
-                  : null,
-              rarity:
-                typeof fixed.riftbound_rarity === "string"
-                  ? fixed.riftbound_rarity
-                  : null,
-              imageUrl: blueprint.image_url ?? null,
-              fixedProperties: fixed,
-              editableProperties: blueprint.editable_properties,
-              active: true,
-              syncedAt: now,
+              expansionId: values.expansionId,
+              name: values.name,
+              version: values.version,
+              collectorNumber: values.collectorNumber,
+              rarity: values.rarity,
+              imageUrl: values.imageUrl,
+              fixedProperties: values.fixedProperties,
+              editableProperties: values.editableProperties,
+              active: values.active,
+              syncedAt: values.syncedAt,
             },
           });
       }
@@ -120,10 +118,7 @@ export async function synchronizeCatalog(client = new CardTraderClient()) {
         status: "failed",
         completedAt: new Date(),
         failureCount: 1,
-        error:
-          error instanceof Error
-            ? error.message.slice(0, 500)
-            : "Unknown catalog error",
+        error: boundedErrorMessage(error, "Unknown catalog error"),
       })
       .where(eq(scanRuns.id, run.id));
     throw error;

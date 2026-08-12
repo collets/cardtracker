@@ -1,4 +1,7 @@
-import { SUPPORTED_LANGUAGE_CODES } from "@/lib/constants";
+import {
+  SUPPORTED_LANGUAGE_CODES,
+  type SupportedLanguageCode,
+} from "@/lib/constants";
 
 export const CATALOG_PAGE_SIZES = [24, 48, 96] as const;
 export const DEFAULT_CATALOG_PAGE_SIZE = 24;
@@ -37,7 +40,7 @@ export type CatalogFilters = {
   query: string;
   expansionIds: number[];
   rarities: string[];
-  languages: string[];
+  languages: SupportedLanguageCode[];
   finish: CatalogFinish;
   printing: CatalogPrinting;
   version: string;
@@ -96,10 +99,9 @@ export function parseCatalogFilters(
     rarities: valuesOf(searchParams.rarity)
       .slice(0, 30)
       .map((value) => value.slice(0, 80)),
-    languages: valuesOf(searchParams.language).filter((value) =>
-      SUPPORTED_LANGUAGE_CODES.includes(
-        value as (typeof SUPPORTED_LANGUAGE_CODES)[number],
-      ),
+    languages: valuesOf(searchParams.language).filter(
+      (value): value is SupportedLanguageCode =>
+        SUPPORTED_LANGUAGE_CODES.includes(value as SupportedLanguageCode),
     ),
     finish: enumValue(firstOf(searchParams.finish), CATALOG_FINISHES, "any"),
     printing: enumValue(

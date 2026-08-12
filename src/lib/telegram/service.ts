@@ -13,6 +13,7 @@ import {
 } from "@/db/schema";
 import { getCardTraderBlueprintUrl } from "@/lib/cardtrader/links";
 import { getServerEnv, requireEnv } from "@/lib/env";
+import { boundedErrorMessage } from "@/lib/errors";
 import { formatEuro } from "@/lib/utils";
 
 const telegramUpdateSchema = z.object({
@@ -234,10 +235,7 @@ export async function dispatchPendingNotifications(
         .set({
           status: "failed",
           attempts: sql`${notificationDeliveries.attempts} + 1`,
-          lastError:
-            error instanceof Error
-              ? error.message.slice(0, 500)
-              : "Telegram error",
+          lastError: boundedErrorMessage(error, "Telegram error"),
         })
         .where(eq(notificationDeliveries.id, row.delivery.id));
       failed += 1;

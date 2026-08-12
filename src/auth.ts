@@ -2,7 +2,7 @@ import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
 import { DrizzleAdapter } from "@auth/drizzle-adapter";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import {
   accounts,
@@ -46,7 +46,7 @@ async function authorizationForEmail(emailValue: string) {
     .where(
       and(
         sql`lower(${invitations.email}) = ${email}`,
-        sql`${invitations.acceptedAt} is null`,
+        isNull(invitations.acceptedAt),
       ),
     )
     .limit(1);
