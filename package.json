@@ -36,7 +36,7 @@
     "cloudflare:scheduler:dev": "pnpm dlx wrangler@4 dev --config cloudflare/market-scheduler/wrangler.jsonc --test-scheduled",
     "cloudflare:scheduler:dry-run": "pnpm dlx wrangler@4 deploy --config cloudflare/market-scheduler/wrangler.jsonc --dry-run",
     "cloudflare:scheduler:deploy": "pnpm dlx wrangler@4 deploy --config cloudflare/market-scheduler/wrangler.jsonc",
-    "cloudflare:scheduler:secret": "pnpm dlx wrangler@4 secret put --config cloudflare/market-scheduler/wrangler.jsonc",
+    "cloudflare:scheduler:secret": "node scripts/cloudflare-scheduler-secret.mjs",
     "cloudflare:scheduler:tail": "pnpm dlx wrangler@4 tail --config cloudflare/market-scheduler/wrangler.jsonc",
     "cloudflare:scheduler:check": "node scripts/check-cloudflare-scheduler.mjs",
     "docs:check": "node scripts/check-docs.mjs",

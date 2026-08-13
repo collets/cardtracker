@@ -53,6 +53,11 @@ The first command may download Wrangler. Do not run deploy, secret, or tail
 commands from an agent session unless the operator explicitly authorizes the
 specific Cloudflare environment.
 
+The secret wrapper accepts only a secret **name** and makes Wrangler prompt for
+the value. For example, use `pnpm cloudflare:scheduler:secret --
+RIFTWATCH_SCAN_URL` and paste the URL only when prompted. Do not append a value
+to the command: it could enter shell history and will be rejected by the wrapper.
+
 ## Local validation
 
 This validates the disabled guard and scheduled-handler wiring without calling
