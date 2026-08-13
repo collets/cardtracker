@@ -1,5 +1,16 @@
 import "server-only";
-import { and, asc, eq, gt, inArray, isNotNull, lt, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  inArray,
+  isNotNull,
+  lt,
+  or,
+  sql,
+} from "drizzle-orm";
 import { getDb, getSql } from "@/db";
 import {
   alerts,
@@ -16,6 +27,7 @@ import {
 import { CardTraderClient } from "@/lib/cardtrader/client";
 import type { MarketListing } from "@/lib/cardtrader/types";
 import { PRICE_HISTORY_RETENTION_DAYS } from "@/lib/constants";
+import { shouldCreateAlertEvent } from "@/lib/alerts/lifecycle";
 import { evaluateDeal } from "@/lib/deals/evaluate";
 import type { WatchFilters } from "@/lib/deals/types";
 import { getServerEnv } from "@/lib/env";
@@ -34,9 +46,15 @@ import {
 const BLUEPRINT_PROCESS_CONCURRENCY = 5;
 const MILLISECONDS_PER_MINUTE = 60_000;
 const MILLISECONDS_PER_DAY = 24 * 60 * MILLISECONDS_PER_MINUTE;
-const SCAN_INTERVAL_MS = 5 * MILLISECONDS_PER_MINUTE;
+// The scheduler invokes the route every minute. Individual blueprints remain
+// due only every five minutes, which absorbs invocation drift without making
+// extra CardTrader calls for work that is not due.
+export const WATCH_SCAN_INTERVAL_MS = 5 * MILLISECONDS_PER_MINUTE;
+// Keep a claimed blueprint unavailable longer than the route's 240-second
+// maximum duration. This prevents a late invocation from being claimed again
+// while its predecessor is still finalizing persistence.
+export const WATCH_SCAN_LEASE_MS = WATCH_SCAN_INTERVAL_MS;
 const BASELINE_LOOKBACK_MS = 7 * MILLISECONDS_PER_DAY;
-const ALERT_RENOTIFICATION_INTERVAL_MS = MILLISECONDS_PER_DAY;
 
 function hourBucket(date: Date) {
   const value = new Date(date);
@@ -64,7 +82,7 @@ export async function claimDueBlueprints(
       for update of state skip locked
     )
     update blueprint_scan_state state
-    set lease_until = now() + interval '4 minutes'
+    set lease_until = now() + ${WATCH_SCAN_LEASE_MS} * interval '1 millisecond'
     from candidates
     where state.blueprint_id = candidates.blueprint_id
     returning state.blueprint_id
@@ -79,7 +97,7 @@ async function recordBlueprintFailure(blueprintId: number, error: unknown) {
       leaseUntil: null,
       failureCount: sql`${blueprintScanState.failureCount} + 1`,
       lastError: boundedErrorMessage(error, "Unknown scan error"),
-      nextScanAt: new Date(Date.now() + SCAN_INTERVAL_MS),
+      nextScanAt: new Date(Date.now() + WATCH_SCAN_INTERVAL_MS),
     })
     .where(eq(blueprintScanState.blueprintId, blueprintId));
 }
@@ -175,10 +193,14 @@ async function processBlueprintListings(
           set: observationValues,
         });
 
-      const activeForWatch = await getDb()
+      const alertsForWatch = await getDb()
         .select()
         .from(alerts)
-        .where(and(eq(alerts.watchId, watch.id), eq(alerts.state, "active")));
+        .where(eq(alerts.watchId, watch.id))
+        .orderBy(desc(alerts.lastSeenAt), desc(alerts.firstSeenAt));
+      const activeForWatch = alertsForWatch.filter(
+        (alert) => alert.state === "active",
+      );
 
       if (
         evaluation.qualifies &&
@@ -187,17 +209,50 @@ async function processBlueprintListings(
         evaluation.discountBps !== null &&
         evaluation.confidence
       ) {
+        const candidate = evaluation.candidate;
         const alertEvidence = {
-          candidate: evaluation.candidate,
-          candidatePriceCents: evaluation.candidate.priceCents,
+          candidate,
+          candidatePriceCents: candidate.priceCents,
           referencePriceCents: evaluation.referencePriceCents,
           discountBps: evaluation.discountBps,
           confidence: evaluation.confidence,
         };
-        const existing = activeForWatch.find(
-          (alert) => alert.productId === evaluation.candidate?.productId,
+        const activeForListing = activeForWatch.find(
+          (alert) => alert.productId === candidate.productId,
         );
-        if (existing) {
+        const latestAlertForListing = alertsForWatch.find(
+          (alert) => alert.productId === candidate.productId,
+        );
+        const createsNewEvent = shouldCreateAlertEvent({
+          productId: candidate.productId,
+          candidatePriceCents: candidate.priceCents,
+          activeAlerts: activeForWatch,
+          latestAlertForListing,
+          now,
+        });
+
+        if (createsNewEvent) {
+          if (activeForListing) {
+            await getDb()
+              .update(alerts)
+              .set({ state: "expired", expiredAt: now })
+              .where(eq(alerts.id, activeForListing.id));
+          }
+          const [saved] = await getDb()
+            .insert(alerts)
+            .values({
+              watchId: watch.id,
+              productId: candidate.productId,
+              ...alertEvidence,
+              lastNotifiedAt: now,
+              lastNotifiedPriceCents: candidate.priceCents,
+            })
+            .returning();
+          if (saved) {
+            createdAlerts += 1;
+            await queueTelegramDelivery(saved.id, now);
+          }
+        } else if (activeForListing) {
           await getDb()
             .update(alerts)
             .set({
@@ -205,55 +260,12 @@ async function processBlueprintListings(
               missCount: 0,
               lastSeenAt: now,
             })
-            .where(eq(alerts.id, existing.id));
-        } else {
-          const [known] = await getDb()
-            .select()
-            .from(alerts)
-            .where(
-              and(
-                eq(alerts.watchId, watch.id),
-                eq(alerts.productId, evaluation.candidate.productId),
-              ),
-            )
-            .limit(1);
-          const canRenotify =
-            !known?.lastNotifiedAt ||
-            now.getTime() - known.lastNotifiedAt.getTime() >=
-              ALERT_RENOTIFICATION_INTERVAL_MS ||
-            (known.lastNotifiedPriceCents !== null &&
-              evaluation.candidate.priceCents <=
-                known.lastNotifiedPriceCents * 0.9);
-          const [saved] = known
-            ? await getDb()
-                .update(alerts)
-                .set({
-                  state: "active",
-                  ...alertEvidence,
-                  missCount: 0,
-                  lastSeenAt: now,
-                  expiredAt: null,
-                  lastNotifiedAt: canRenotify ? now : known.lastNotifiedAt,
-                  lastNotifiedPriceCents: canRenotify
-                    ? evaluation.candidate.priceCents
-                    : known.lastNotifiedPriceCents,
-                })
-                .where(eq(alerts.id, known.id))
-                .returning()
-            : await getDb()
-                .insert(alerts)
-                .values({
-                  watchId: watch.id,
-                  productId: evaluation.candidate.productId,
-                  ...alertEvidence,
-                  lastNotifiedAt: now,
-                  lastNotifiedPriceCents: evaluation.candidate.priceCents,
-                })
-                .returning();
-          if (saved && (!known || canRenotify)) {
-            createdAlerts += 1;
-            await queueTelegramDelivery(saved.id, now);
-          }
+            .where(eq(alerts.id, activeForListing.id));
+        } else if (latestAlertForListing) {
+          await getDb()
+            .update(alerts)
+            .set({ lastSeenAt: now })
+            .where(eq(alerts.id, latestAlertForListing.id));
         }
       }
 
@@ -278,7 +290,7 @@ async function processBlueprintListings(
       .update(blueprintScanState)
       .set({
         lastScanAt: now,
-        nextScanAt: new Date(now.getTime() + SCAN_INTERVAL_MS),
+        nextScanAt: new Date(now.getTime() + WATCH_SCAN_INTERVAL_MS),
         leaseUntil: null,
         failureCount: 0,
         lastError: null,

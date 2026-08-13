@@ -27,14 +27,19 @@
 - [x] Atomic Telegram link-token consumption with concurrent replay coverage.
 - [x] Structured one-tap alert outcomes, administrator aggregates, and a
       mobile-layout browser audit across all application pages.
+- [x] Alert Inbox/History, reversible event archiving, and material-improvement
+      re-alert suppression with local browser and PostgreSQL coverage.
 - [x] Guarded no-cost logical backup and disposable local restore tooling; the
       first operator backup remains a production rollout gate.
-- [ ] Five-minute production rollout, deliberately deferred during the
-      friends-and-family product-validation phase.
+- [x] Five-minute scanner cadence, overlap-safe leases, and an optional
+      disabled Cloudflare Workers Free scheduler bridge with local validation.
+- [ ] Hosted five-minute scheduler enablement and observation, deliberately
+      deferred until the owner completes the operator runbook.
 
-The remaining item requires a product decision, explicit paid-plan approval,
-and project-owner access to Vercel. Follow `docs/PRODUCTION_ROLLOUT.md`; do not
-infer hosted completion from local checks.
+The remaining item requires project-owner access to Cloudflare and explicit
+production authorization. A later Vercel-native scheduler additionally requires
+paid-plan approval. Follow `docs/CLOUDFLARE_SCHEDULER.md` and
+`docs/PRODUCTION_ROLLOUT.md`; do not infer hosted completion from local checks.
 
 Ideas that are deliberately outside this checklist, together with the parked
 security branch, are recorded in [Future improvements](future-improvements.md).

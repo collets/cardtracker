@@ -7,7 +7,11 @@ import { getDb } from "@/db";
 import { alerts, userPreferences, watches } from "@/db/schema";
 import { actionResult } from "@/lib/actions/server";
 import { ALERT_FEEDBACK_OUTCOMES } from "@/lib/alerts/feedback-options";
-import { saveAlertFeedback } from "@/lib/alerts/service";
+import {
+  archiveAlert,
+  restoreAlertToInbox,
+  saveAlertFeedback,
+} from "@/lib/alerts/service";
 import { requireUser } from "@/lib/auth/guards";
 import { UserFacingError } from "@/lib/errors";
 import { runMarketScanner, scanUserWatchlist } from "@/lib/scanner/service";
@@ -159,6 +163,32 @@ export async function saveAlertFeedbackAction(formData: FormData) {
     },
     "Thanks — your feedback was saved",
     "Your feedback could not be saved. Please retry.",
+  );
+}
+
+export async function archiveAlertAction(formData: FormData) {
+  const user = await requireUser();
+  return actionResult(
+    async () => {
+      const alertId = alertIdSchema.parse(formData.get("alertId"));
+      await archiveAlert(user.id, alertId);
+      revalidatePath("/alerts");
+    },
+    "Alert archived; the watch is still active",
+    "The alert could not be archived. Please retry.",
+  );
+}
+
+export async function restoreAlertToInboxAction(formData: FormData) {
+  const user = await requireUser();
+  return actionResult(
+    async () => {
+      const alertId = alertIdSchema.parse(formData.get("alertId"));
+      await restoreAlertToInbox(user.id, alertId);
+      revalidatePath("/alerts");
+    },
+    "Alert restored to Inbox",
+    "The alert could not be restored. Please retry.",
   );
 }
 

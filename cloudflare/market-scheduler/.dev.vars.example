@@ -1,0 +1,4 @@
+# Keep the local scheduled-handler test inert. Do not place production values here.
+SCHEDULER_ENABLED=false
+RIFTWATCH_SCAN_URL=
+CRON_SECRET=

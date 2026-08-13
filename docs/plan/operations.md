@@ -11,14 +11,25 @@
 ## Scheduling
 
 Vercel Hobby invokes catalog and market cron routes daily for smoke testing.
-After upgrading to Pro, the market route runs every minute and claims up to 50
-blueprints due every five minutes. Requests start at no more than five per second.
-Database leases make retries and overlapping invocations safe.
+For the friends-and-family MVP, an optional Cloudflare Workers Free bridge can
+invoke the existing protected market route every five minutes without changing
+the Vercel plan. It contains no CardTrader or database credential and defaults
+to disabled. The database claims each unique blueprint only every five minutes;
+empty invocations make no CardTrader request. Requests start at no more than
+five per second, and five-minute database leases prevent overlaps.
+
+Vercel Pro remains the simpler long-term option: it can replace the bridge with
+a per-minute Vercel Cron trigger while retaining the same five-minute due-work
+cadence. Do not enable both clocks in steady state. The bridge’s deployment,
+secret, enable, rollback, and observation procedure is in
+[Cloudflare five-minute scheduler](../CLOUDFLARE_SCHEDULER.md).
 
 ## Expected base cost
 
 - Development: Vercel Hobby and Supabase Free, USD 0 before domain costs.
-- Five-minute MVP: one Vercel Pro seat, approximately USD 20/month.
+- Five-minute MVP bridge: Cloudflare Workers Free within its then-current free
+  allowance; observe usage and do not add a paid plan.
+- Five-minute Vercel option: one Vercel Pro seat, approximately USD 20/month.
 - Production database upgrade: Supabase Pro adds approximately USD 25/month.
 
 Administrators inspect recent runs and capacity in the application. Operators

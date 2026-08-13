@@ -12,6 +12,8 @@ test-results/
 .env.local
 .env.*.local
 !.env.example
+cloudflare/market-scheduler/.dev.vars*
+!cloudflare/market-scheduler/.dev.vars.example
 *.db
 *.db-shm
 *.db-wal

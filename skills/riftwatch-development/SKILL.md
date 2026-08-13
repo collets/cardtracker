@@ -13,7 +13,10 @@ Work from the repository root and preserve unrelated developer changes.
 2. Read `docs/DEVELOPMENT.md` for commands and environment behavior.
 3. Read `CONTRIBUTING.md` for security, architecture, and verification rules.
 4. Read only the relevant decision record under `docs/plan/`.
-5. Before changing Next.js behavior, read the relevant installed guide under
+5. For the optional Cloudflare scheduler, read
+   `docs/CLOUDFLARE_SCHEDULER.md` before changing its Worker, command, secret,
+   or rollout behavior.
+6. Before changing Next.js behavior, read the relevant installed guide under
    `node_modules/next/dist/docs/`; do not rely on older framework knowledge.
 
 ## Choose the workflow
@@ -24,11 +27,21 @@ Work from the repository root and preserve unrelated developer changes.
   Next.js with Turbopack.
 - For schema work, change `src/db/schema.ts`, generate a new migration, inspect
   its SQL, migrate locally, and commit schema plus generated migration metadata.
+- For an owner-approved hosted migration, require a reviewed branch and an
+  exported `DATABASE_URL_DIRECT`, then use
+  `pnpm db:migrate:remote -- --allow-hosted`. Never supply a URL as a command
+  argument, print it, or substitute the command for migration/rollout review.
 - For catalog or scanner work, keep the CardTrader call server-side and exercise
   the authenticated local cron helper while the app is running. Preserve the
   adaptive marketplace strategy: expansion fetches for five or more claimed
   blueprints in one expansion, individual fetches for smaller groups and manual
   single-watch scans, with no same-run fan-out after a bulk failure.
+- For the Cloudflare five-minute scheduler, keep the Worker as a disabled-by-
+  default, single-request clock only. It may hold the existing `CRON_SECRET` and
+  canonical scan URL as encrypted Worker secrets, but never a CardTrader token,
+  database URL, or marketplace logic. Run `pnpm cloudflare:scheduler:check`
+  locally; never run deploy, secret, tail, or an enabled scheduled test without
+  explicit authorization for that Cloudflare environment.
 - For pricing work, preserve integer cents/basis points and add focused tests to
   the pure deal evaluator.
 - For integration work, use `pnpm test:integration`; its fixtures must retain the

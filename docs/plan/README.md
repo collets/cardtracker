@@ -6,7 +6,8 @@ product or operational decision changes.
 For hands-on setup and contribution workflows, see
 [Development](../DEVELOPMENT.md), [API endpoints](../API.md), and
 [Contributing](../../CONTRIBUTING.md). Hosted account work follows the
-[Production rollout checklist](../PRODUCTION_ROLLOUT.md).
+[Production rollout checklist](../PRODUCTION_ROLLOUT.md). The optional free
+[Cloudflare scheduler](../CLOUDFLARE_SCHEDULER.md) has its own operator runbook.
 
 - [Product](product.md): audience, workflows, defaults, and non-goals.
 - [Architecture](architecture.md): components, integrations, and security.

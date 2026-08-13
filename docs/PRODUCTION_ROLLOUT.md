@@ -297,9 +297,9 @@ Use `pnpm telegram:webhook:delete` during shutdown or credential rotation.
 - [x] Apply migration `0002_rare_klaw.sql` from the trusted migration shell. It
       adds one outcome enum and the RLS-enabled `alert_feedback` table; it does
       not rewrite existing alert rows.
-- [ ] Deploy the matching application commit and confirm `/api/health` remains
+- [x] Deploy the matching application commit and confirm `/api/health` remains
       healthy.
-- [ ] Have one invited user rate an alert from a mobile viewport, change the
+- [x] Have one invited user rate an alert from a mobile viewport, change the
       answer once, and confirm the alert is marked read.
 - [ ] Confirm Administration shows exactly one latest response for that alert
       and no free-form or credential data is stored.
@@ -321,15 +321,55 @@ completed successfully through the verified `aws-0-eu-central-1` session pooler.
 A read-only query confirmed the `alert_feedback` table, enabled RLS, all six
 outcome values, and three Drizzle migration-history rows. No application data was
 rewritten; the matching application deployment and invited-user validation are
-still outstanding.
+complete. Administration aggregate validation remains outstanding.
 
-## 7. Promote to five-minute scanning
+### Deploy alert Inbox and event lifecycle
 
-This promotion is deliberately deferred while a small friends-and-family cohort
-validates whether Riftwatch solves a real purchasing problem. Keep the daily
-smoke schedule, do not upgrade Vercel for this item, and do not advertise
-five-minute coverage during this phase. Resume only after product demand and
-alert usefulness justify the recurring cost and operational observation period.
+- [ ] Apply migration `0003_absurd_slipstream.sql` to Preview and Production
+      from their respective trusted migration sessions. It removes the old
+      per-watch/listing uniqueness constraint, adds `archived_at`, and adds a
+      lookup index so historical feedback remains attached to each alert event.
+- [ ] Deploy the matching application commit and confirm `/api/health` remains
+      healthy in both environments.
+- [ ] Verify on mobile: archive an Inbox alert, confirm the watch remains
+      active, restore it from History, and confirm it returns to Inbox.
+- [ ] Trigger local integration coverage for unchanged, improved, and different
+      listing cases before considering any scanner schedule change.
+
+## 7. Five-minute scheduled scanning
+
+The source and local verification are ready, but neither clock is enabled by
+this repository work. Choose exactly one option after the alert lifecycle
+deployment is healthy. Do not advertise five-minute coverage until the selected
+clock completes its observation period.
+
+### 7a. Cloudflare Workers Free bridge
+
+This is the no-cost friends-and-family option. It uses the existing protected
+Riftwatch scan route, keeps Vercel on Hobby’s daily schedule, and makes no
+CardTrader request when no blueprint is due.
+
+- [x] Keep `vercel.json` on the daily Hobby-compatible market schedule and
+      retain the five-minute scanner cadence and overlap-safe leases in code.
+- [x] Prepare the disabled scheduler source, local validation, and complete
+      operator runbook in [Cloudflare five-minute scheduler](CLOUDFLARE_SCHEDULER.md).
+- [ ] Create the Worker on the Cloudflare Workers Free plan and deploy it while
+      `SCHEDULER_ENABLED=false`. This is an external production action.
+- [ ] Add the canonical scan URL and matching `CRON_SECRET` as encrypted Worker
+      secrets; never put either in source, a command line, or a local Worker
+      file.
+- [ ] Verify disabled ticks make no request, then explicitly set
+      `SCHEDULER_ENABLED=true` when the limited cohort is ready.
+- [ ] Observe the first hour, first day, and first seven days: scan requests,
+      stale blueprints, partial/failed runs, notification failures, CardTrader
+      errors, function duration, database connections, and Cloudflare usage.
+- [ ] Set `SCHEDULER_ENABLED=false` immediately for scheduler trouble. Retain
+      the daily Vercel fallback and record the incident.
+
+### 7b. Vercel Pro replacement
+
+Use this only once product demand and the recurring budget justify replacing the
+free bridge. Disable the Cloudflare Worker before deploying the Vercel change.
 
 - [ ] Obtain explicit approval for the Vercel Pro plan and expected function
       usage. Hobby permits only daily cron schedules; minute-level expressions
@@ -351,8 +391,9 @@ Current plan limits and cron precision are documented in
 
 ## 8. Rollback and incident checklist
 
-- [ ] For scanner trouble, restore the daily schedule or remove the market cron
-      entry and deploy before changing application code.
+- [ ] For Cloudflare bridge trouble, set `SCHEDULER_ENABLED=false` before
+      changing application code. For Vercel-native cron trouble, restore the
+      daily schedule or remove the market entry and deploy.
 - [ ] For notification trouble, remove the Telegram webhook and disable affected
       channels while retaining delivery evidence.
 - [ ] For a bad application deployment, use Vercel rollback and separately verify

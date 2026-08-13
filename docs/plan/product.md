@@ -35,3 +35,8 @@ cart or purchases a product.
   unavailable, not a real deal, wrong details, or shipping too expensive. The
   latest answer is editable, marks the alert read, and feeds an administrator
   aggregate without collecting free-form text.
+- Alerts are events, not watches: Inbox shows active unread opportunities and
+  History preserves read, archived, and expired evidence. Archiving a deal
+  leaves its watch enabled and is reversible. A fresh event requires a material
+  improvement (EUR 2 or 10%), a 24-hour reappearance, or a different listing
+  that materially beats the active deal.

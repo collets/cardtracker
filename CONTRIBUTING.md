@@ -79,6 +79,12 @@ pnpm db:generate
 pnpm db:migrate
 ```
 
+For an explicitly approved hosted migration from a reviewed branch, export that
+environment's `DATABASE_URL_DIRECT` and run
+`pnpm db:migrate:remote -- --allow-hosted`. The command refuses local targets,
+does not accept or display connection strings, and is never a substitute for
+reviewing the generated SQL and rollout plan.
+
 Review generated SQL. Call out destructive operations, long locks, data
 backfills, and rollback considerations in the PR. Commit generated SQL and
 Drizzle metadata. Never rewrite an already-shared migration.
@@ -99,6 +105,10 @@ bypass that guard.
   are sufficient.
 - Keep cron endpoints protected by `CRON_SECRET` and Telegram webhooks protected
   by Telegram's secret-token header.
+- Keep the optional Cloudflare scheduler isolated under `cloudflare/`; it may
+  only call the existing cron route with encrypted Worker secrets and must stay
+  disabled by default. Never put its secrets in Wrangler configuration or run
+  its deploy/secret commands without explicit environment approval.
 - Keep Auth.js development credentials disabled in production.
 - Keep the production build wrapper's development-provider override intact.
 - Treat listing links and prices as advisory; Riftwatch never purchases items.

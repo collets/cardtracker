@@ -361,12 +361,14 @@ export const alerts = pgTable(
     }),
     lastNotifiedPriceCents: integer("last_notified_price_cents"),
     readAt: timestamp("read_at", { mode: "date", withTimezone: true }),
+    archivedAt: timestamp("archived_at", { mode: "date", withTimezone: true }),
     expiredAt: timestamp("expired_at", { mode: "date", withTimezone: true }),
   },
   (table) => [
-    uniqueIndex("alerts_watch_product_unique").on(
+    index("alerts_watch_product_last_seen_idx").on(
       table.watchId,
       table.productId,
+      table.lastSeenAt,
     ),
     index("alerts_watch_state_idx").on(table.watchId, table.state),
   ],

@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { alertFeedback, alerts, watches } from "@/db/schema";
 import type { AlertFeedbackOutcome } from "@/lib/alerts/feedback-options";
@@ -36,4 +36,34 @@ export async function saveAlertFeedback(
         .where(eq(alerts.id, alertId));
     }
   });
+}
+
+export async function archiveAlert(userId: string, alertId: string) {
+  const now = new Date();
+  const [archived] = await getDb()
+    .update(alerts)
+    .set({ state: "dismissed", archivedAt: now, readAt: now })
+    .where(
+      and(
+        eq(alerts.id, alertId),
+        sql`exists (select 1 from ${watches} where ${watches.id} = ${alerts.watchId} and ${watches.userId} = ${userId})`,
+      ),
+    )
+    .returning({ id: alerts.id });
+  if (!archived) throw new UserFacingError("Alert not found");
+}
+
+export async function restoreAlertToInbox(userId: string, alertId: string) {
+  const [restored] = await getDb()
+    .update(alerts)
+    .set({ state: "active", archivedAt: null, readAt: null, missCount: 0 })
+    .where(
+      and(
+        eq(alerts.id, alertId),
+        eq(alerts.state, "dismissed"),
+        sql`exists (select 1 from ${watches} where ${watches.id} = ${alerts.watchId} and ${watches.userId} = ${userId})`,
+      ),
+    )
+    .returning({ id: alerts.id });
+  if (!restored) throw new UserFacingError("Archived alert not found");
 }
