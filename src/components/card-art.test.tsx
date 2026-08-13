@@ -7,9 +7,12 @@ import { describe, expect, it, vi } from "vitest";
 import { CardArt } from "@/components/card-art";
 
 vi.mock("next/image", () => ({
-  default: (props: ComponentProps<"img"> & { fill?: boolean }) => {
-    const { fill, ...imageProps } = props;
+  default: (
+    props: ComponentProps<"img"> & { fill?: boolean; unoptimized?: boolean },
+  ) => {
+    const { fill, unoptimized, ...imageProps } = props;
     void fill;
+    void unoptimized;
 
     return (
       // The mock exposes Next Image props through a native image for interaction tests.

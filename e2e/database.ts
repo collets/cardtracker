@@ -1,4 +1,4 @@
-import { eq, inArray, like } from "drizzle-orm";
+import { and, eq, inArray, like } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import {
@@ -73,6 +73,24 @@ export async function cleanE2eFixtures() {
       .where(like(users.email, "guest-%@guest.riftwatch.test"));
     await db.delete(expansions).where(eq(expansions.id, e2eExpansionId));
     await db.delete(users).where(inArray(users.id, [...e2eUserIds]));
+  });
+}
+
+/**
+ * Playwright retries rerun the test body without rerunning global setup. Keep
+ * the admin watch scenario idempotent so a failed attempt cannot affect its
+ * retry.
+ */
+export async function cleanE2eAdminWatch() {
+  await withDatabase(async (db) => {
+    await db
+      .delete(watches)
+      .where(
+        and(
+          eq(watches.userId, e2eUserIds[0]),
+          eq(watches.blueprintId, e2eWatchBlueprintId),
+        ),
+      );
   });
 }
 
