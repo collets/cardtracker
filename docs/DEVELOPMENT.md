@@ -145,8 +145,8 @@ pnpm local:down
 | Command                                           | Behavior                                                       |
 | ------------------------------------------------- | -------------------------------------------------------------- |
 | `pnpm db:generate`                                | Generate a migration from schema changes                       |
-| `pnpm db:migrate`                                 | Apply pending committed migrations                             |
-| `pnpm db:migrate:remote -- --allow-hosted`        | Apply to an explicitly approved non-local direct database      |
+| `pnpm db:migrate`                                 | Apply pending migrations; prints every executed migration tag  |
+| `pnpm db:migrate:remote -- --allow-hosted`        | Apply to an approved non-local direct database; prints tags    |
 | `pnpm db:seed`                                    | Idempotently seed/update the development administrator         |
 | `pnpm db:studio`                                  | Open Drizzle Studio                                            |
 | `pnpm db:shell`                                   | Open `psql` inside the PostgreSQL container                    |
@@ -332,6 +332,8 @@ not accept a connection string as an argument or print one. It invokes the same
 Drizzle migration runner as `pnpm db:migrate`, so it applies only pending
 committed migrations. This is a hosted write: select the environment carefully,
 review the generated SQL first, and use it only with explicit operator approval.
+On success, both migration commands print each migration tag they executed, or
+`No pending migrations.` when the target schema is already current.
 
 Do not modify a migration that may already have been applied by another
 developer or environment; create a follow-up migration. Do not use destructive
