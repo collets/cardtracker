@@ -17,7 +17,11 @@ import {
   watches,
   watchMetrics,
 } from "@/db/schema";
-import { saveAlertFeedback } from "@/lib/alerts/service";
+import {
+  archiveAlert,
+  restoreAlertToInbox,
+  saveAlertFeedback,
+} from "@/lib/alerts/service";
 import type { MarketListing } from "@/lib/cardtrader/types";
 import {
   claimDueBlueprints,
@@ -25,6 +29,8 @@ import {
   runMarketScanner,
   scanBlueprint,
   scanUserWatchlist,
+  WATCH_SCAN_INTERVAL_MS,
+  WATCH_SCAN_LEASE_MS,
 } from "@/lib/scanner/service";
 import {
   createTelegramLink,
@@ -191,12 +197,68 @@ afterAll(async () => {
 
 describe("scanner persistence", () => {
   it("claims a due blueprint only once across overlapping workers", async () => {
+    const before = new Date();
     const claims = await Promise.all([
       claimDueBlueprints(10, blueprintId),
       claimDueBlueprints(10, blueprintId),
     ]);
 
     expect(claims.flat().filter((id) => id === blueprintId)).toHaveLength(1);
+    const [state] = await getDb()
+      .select({ leaseUntil: blueprintScanState.leaseUntil })
+      .from(blueprintScanState)
+      .where(eq(blueprintScanState.blueprintId, blueprintId));
+    if (!state?.leaseUntil) throw new Error("Blueprint lease was not claimed");
+    expect(state.leaseUntil).toBeInstanceOf(Date);
+    expect(state.leaseUntil.getTime()).toBeGreaterThanOrEqual(
+      before.getTime() + WATCH_SCAN_LEASE_MS,
+    );
+  });
+
+  it("keeps a successfully scanned blueprint off the due queue for five minutes", async () => {
+    const before = new Date();
+    let runId: string | undefined;
+    try {
+      await expect(claimDueBlueprints(1, blueprintId)).resolves.toEqual([
+        blueprintId,
+      ]);
+      await expect(
+        runMarketScanner({
+          explicitBlueprintIds: [blueprintId],
+          client: {
+            marketplaceProducts: vi
+              .fn()
+              .mockResolvedValue(nonQualifyingListings),
+            marketplaceProductsForExpansion: vi
+              .fn()
+              .mockResolvedValue(new Map()),
+          },
+          dispatchNotifications: async () => ({ sent: 0, failed: 0 }),
+        }),
+      ).resolves.toMatchObject({ claimed: 1, successes: 1, failures: 0 });
+
+      const [run] = await getDb()
+        .select({ id: scanRuns.id })
+        .from(scanRuns)
+        .orderBy(desc(scanRuns.startedAt))
+        .limit(1);
+      runId = run?.id;
+      const [state] = await getDb()
+        .select()
+        .from(blueprintScanState)
+        .where(eq(blueprintScanState.blueprintId, blueprintId));
+      expect(state?.lastScanAt).toBeInstanceOf(Date);
+      expect(state?.nextScanAt).toBeInstanceOf(Date);
+      expect(state?.leaseUntil).toBeNull();
+      expect(state?.nextScanAt.getTime()).toBeGreaterThanOrEqual(
+        before.getTime() + WATCH_SCAN_INTERVAL_MS,
+      );
+      expect(await claimDueBlueprints(10, blueprintId)).toEqual([]);
+    } finally {
+      if (runId) {
+        await getDb().delete(scanRuns).where(eq(scanRuns.id, runId));
+      }
+    }
   });
 
   it("fetches once per blueprint and creates idempotent evidence for every watch", async () => {
@@ -562,6 +624,112 @@ describe("scanner persistence", () => {
       .where(eq(alerts.watchId, watchIds[0]));
     expect(rows[0]).toMatchObject({ state: "expired", missCount: 2 });
     expect(rows[0]?.expiredAt).toBeInstanceOf(Date);
+  });
+
+  it("archives one alert without disabling its watch and creates a new event only for a meaningful change", async () => {
+    await scanBlueprint(blueprintId, {
+      marketplaceProducts: vi.fn().mockResolvedValue(qualifyingListings),
+    });
+    const [original] = await getDb()
+      .select()
+      .from(alerts)
+      .where(eq(alerts.watchId, watchIds[0]))
+      .limit(1);
+    if (!original) throw new Error("Alert fixture was not created");
+
+    await archiveAlert(userIds[0], original.id);
+    await expect(
+      getDb()
+        .select({ active: watches.active })
+        .from(watches)
+        .where(eq(watches.id, watchIds[0])),
+    ).resolves.toEqual([{ active: true }]);
+    await expect(
+      scanBlueprint(blueprintId, {
+        marketplaceProducts: vi.fn().mockResolvedValue(qualifyingListings),
+      }),
+    ).resolves.toEqual({ watches: 2, alerts: 0 });
+
+    const improvedListings = qualifyingListings.map((row, index) =>
+      index === 0 ? { ...row, priceCents: 800 } : row,
+    );
+    await expect(
+      scanBlueprint(blueprintId, {
+        marketplaceProducts: vi.fn().mockResolvedValue(improvedListings),
+      }),
+    ).resolves.toEqual({ watches: 2, alerts: 2 });
+    const history = await getDb()
+      .select()
+      .from(alerts)
+      .where(eq(alerts.watchId, watchIds[0]));
+    expect(history).toHaveLength(2);
+    expect(history).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: original.id, state: "dismissed" }),
+        expect.objectContaining({
+          state: "active",
+          candidatePriceCents: 800,
+          readAt: null,
+        }),
+      ]),
+    );
+  });
+
+  it("restores an archived alert to Inbox only for its owner", async () => {
+    await scanBlueprint(blueprintId, {
+      marketplaceProducts: vi.fn().mockResolvedValue(qualifyingListings),
+    });
+    const [ownedAlert] = await getDb()
+      .select({ id: alerts.id })
+      .from(alerts)
+      .where(eq(alerts.watchId, watchIds[0]))
+      .limit(1);
+    if (!ownedAlert) throw new Error("Alert fixture was not created");
+
+    await archiveAlert(userIds[0], ownedAlert.id);
+    await expect(
+      restoreAlertToInbox(userIds[1], ownedAlert.id),
+    ).rejects.toThrow("Archived alert not found");
+    await restoreAlertToInbox(userIds[0], ownedAlert.id);
+    await expect(
+      getDb().select().from(alerts).where(eq(alerts.id, ownedAlert.id)),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        state: "active",
+        archivedAt: null,
+        readAt: null,
+      }),
+    ]);
+  });
+
+  it("creates a new event when a different listing materially beats the active deal", async () => {
+    await scanBlueprint(blueprintId, {
+      marketplaceProducts: vi.fn().mockResolvedValue(qualifyingListings),
+    });
+    const betterVendorListings = [
+      {
+        ...listing(9_999, 800),
+        seller: {
+          ...listing(9_999, 800).seller,
+          username: "meaningfully-cheaper-seller",
+        },
+      },
+      ...qualifyingListings.slice(1),
+    ];
+
+    await expect(
+      scanBlueprint(blueprintId, {
+        marketplaceProducts: vi.fn().mockResolvedValue(betterVendorListings),
+      }),
+    ).resolves.toEqual({ watches: 2, alerts: 2 });
+    await expect(
+      getDb()
+        .select({ productId: alerts.productId })
+        .from(alerts)
+        .where(eq(alerts.watchId, watchIds[0])),
+    ).resolves.toEqual(
+      expect.arrayContaining([{ productId: 9001 }, { productId: 9_999 }]),
+    );
   });
 
   it("records safe failures and releases the lease", async () => {

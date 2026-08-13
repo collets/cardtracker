@@ -350,6 +350,7 @@ try {
       for (const script of [
         "format:check",
         "docs:check",
+        "cloudflare:scheduler:check",
         "lint",
         "typecheck",
         "test",
@@ -361,6 +362,7 @@ try {
       for (const script of [
         "format:check",
         "docs:check",
+        "cloudflare:scheduler:check",
         "lint",
         "test",
         "build",

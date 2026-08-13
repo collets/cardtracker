@@ -76,7 +76,7 @@ test.describe.serial("authenticated MVP", () => {
     await expect(page.getByText(e2eAcceptedInviteEmail)).toBeVisible();
   });
 
-  test("normal user cannot access admin and can rate an alert", async ({
+  test("normal user cannot access admin, rate, archive, and restore an alert", async ({
     page,
   }) => {
     await signIn(page, e2eUserEmail);
@@ -102,12 +102,26 @@ test.describe.serial("authenticated MVP", () => {
     await expect(
       page.getByRole("status").filter({ hasText: "your feedback was saved" }),
     ).toBeVisible();
+    await page.getByRole("link", { name: "History" }).click();
     await expect(
       page.getByRole("button", { name: "Feedback: Bought it" }),
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Mark read" }),
     ).not.toBeVisible();
+    await page.getByRole("button", { name: "Archive" }).click();
+    await expect(
+      page.getByRole("status").filter({ hasText: "watch is still active" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Restore to Inbox" }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Restore to Inbox" }).click();
+    await expect(
+      page.getByRole("status").filter({ hasText: "restored to Inbox" }),
+    ).toBeVisible();
+    await page.getByRole("link", { name: "Inbox" }).click();
+    await expect(page.getByRole("button", { name: "Mark read" })).toBeVisible();
   });
 
   test("admin can quick-add and bulk-add catalog printings", async ({

@@ -146,6 +146,7 @@ pnpm local:down
 | ------------------------------------------------- | -------------------------------------------------------------- |
 | `pnpm db:generate`                                | Generate a migration from schema changes                       |
 | `pnpm db:migrate`                                 | Apply pending committed migrations                             |
+| `pnpm db:migrate:remote -- --allow-hosted`        | Apply to an explicitly approved non-local direct database      |
 | `pnpm db:seed`                                    | Idempotently seed/update the development administrator         |
 | `pnpm db:studio`                                  | Open Drizzle Studio                                            |
 | `pnpm db:shell`                                   | Open `psql` inside the PostgreSQL container                    |
@@ -157,6 +158,9 @@ pnpm local:down
 | `pnpm telegram:webhook:set -- --url <https-url>`  | Register the configured bot webhook                            |
 | `pnpm telegram:webhook:status`                    | Inspect sanitized Telegram webhook status                      |
 | `pnpm telegram:webhook:delete`                    | Remove the configured bot webhook                              |
+| `pnpm cloudflare:scheduler:dev`                   | Start the isolated Cloudflare scheduler locally, disabled      |
+| `pnpm cloudflare:scheduler:check`                 | Verify its safe default and URL validation without Wrangler    |
+| `pnpm cloudflare:scheduler:dry-run`               | Validate the optional Worker configuration without deployment  |
 
 The cron helpers require a running Next.js server because they exercise the same
 HTTP boundary used by Vercel. They read `CRON_SECRET` internally and never print
@@ -255,8 +259,24 @@ use individual blueprint requests. Explicit single-watch scans always use the
 blueprint endpoint. An expansion request that exhausts its normal retries fails
 every requested member for that run and is retried later without immediate
 request fan-out. The scanner stores normalized metrics and hourly observations,
-not full raw marketplace responses. Local scans are manual; `vercel.json` defines
-production schedules.
+not full raw marketplace responses. Local scans are manual. The committed Vercel
+Hobby schedule remains daily. In any five-minute configuration,
+`next_scan_at` ensures each blueprint is claimed at most once per five minutes,
+and an invocation with no due work makes no CardTrader request.
+
+For an optional no-cost five-minute MVP bridge, the isolated Cloudflare Worker
+can call the same protected route every five minutes while `vercel.json` remains
+Hobby-compatible. It is outside `pnpm dev`, has no CardTrader or database
+credential, and defaults to disabled. Follow [Cloudflare five-minute
+scheduler](CLOUDFLARE_SCHEDULER.md); its deploy, secret, enable, disable, and
+observation steps are operator-only external actions.
+
+Alert events are separate from watches. The Alerts Inbox contains active unread
+events; History contains read, archived, and expired events. Archiving an event
+never disables its watch. The scanner suppresses an unchanged listing, creates a
+fresh event for a price improvement of at least €2 or 10%, permits a listing to
+return after a 24-hour absence/cooldown, and requires a different listing to
+materially beat the current active deal before alerting.
 
 ## Telegram development
 
@@ -297,6 +317,21 @@ The Drizzle schema is in `src/db/schema.ts`; generated SQL and snapshots are in
 `DATABASE_URL`. Runtime application queries always use `DATABASE_URL`. In a
 serverless deployment, use a transaction pooler for runtime traffic and a direct
 or session connection for the migration command.
+
+To run a reviewed migration from a checked-out branch against Preview or
+Production, export only that environment's direct/session migration URL in the
+shell, then use the explicit guarded command:
+
+```sh
+source ~/.zshrc
+pnpm db:migrate:remote -- --allow-hosted
+```
+
+The command requires `DATABASE_URL_DIRECT`, refuses loopback targets, and does
+not accept a connection string as an argument or print one. It invokes the same
+Drizzle migration runner as `pnpm db:migrate`, so it applies only pending
+committed migrations. This is a hosted write: select the environment carefully,
+review the generated SQL first, and use it only with explicit operator approval.
 
 Do not modify a migration that may already have been applied by another
 developer or environment; create a follow-up migration. Do not use destructive

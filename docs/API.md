@@ -93,8 +93,12 @@ The fetch counts represent client operations, not internal HTTP retries.
 Operational details, including the same fetch breakdown, are stored in
 `scan_runs.details`.
 
-Vercel calls these same GET routes according to `vercel.json`. Do not expose an
-unprotected alternate path for local convenience.
+Vercel calls these same GET routes according to `vercel.json`. The market route
+is daily on Hobby. The optional Cloudflare scheduler calls this same protected
+route every five minutes; the database only claims each blueprint every five
+minutes, so a no-work invocation makes no CardTrader request. See [Cloudflare
+five-minute scheduler](CLOUDFLARE_SCHEDULER.md). Do not expose an unprotected
+alternate path for local convenience.
 
 ## Telegram webhook
 
@@ -119,6 +123,14 @@ Alert feedback accepts one fixed outcome for an alert owned by the authenticated
 user. Saving feedback also marks that alert as read. A later answer replaces the
 earlier answer so each alert contributes only its latest outcome to aggregate
 validation.
+
+The Alerts page has an Inbox (active unread events) and History (read, archived,
+or expired events). Archiving dismisses only that alert event and leaves the
+underlying watch active; restoring an archived event returns it to Inbox. The
+scanner does not re-alert an unchanged listing. It creates a new event when the
+same listing improves by at least €2 or 10%, reappears after 24 hours, or a
+different listing materially beats the best active alert. This keeps alert
+feedback attached to the original event rather than overwriting it.
 
 An invitation is an administrator-managed allowlist record for Google sign-in;
 Riftwatch does not send invitation email. Administrators can revoke a pending

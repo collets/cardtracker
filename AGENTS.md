@@ -38,9 +38,14 @@ that matches the task:
 - `pnpm prod:check-env`, `pnpm ops:status`, and `pnpm smoke:hosted` are the
   production-readiness interfaces; hosted mutations always require explicit
   operator flags.
+- `pnpm cloudflare:scheduler:check` validates the isolated scheduler locally;
+  its deploy, secret, and log commands are external operator actions only.
 - `pnpm db:backup` creates a read-only logical dump only with explicit hosted
   opt-in; `pnpm db:restore:verify` restores only to disposable loopback
   PostgreSQL.
+- `pnpm db:migrate:remote -- --allow-hosted` requires an exported non-loopback
+  `DATABASE_URL_DIRECT`; it is an explicit hosted write and must never be run
+  without environment-specific operator authorization.
 - `pnpm local:reset` deletes local database data and requires explicit consent.
 
 Use `rg`/`rg --files` for discovery. Use `apply_patch` for intentional edits.
@@ -57,6 +62,9 @@ Preserve unrelated work and generated Drizzle migrations.
   authorize, validate, and scope user-owned records.
 - Keep production development-auth rejection, cron authentication, Telegram
   webhook verification, hashed one-time link tokens, and idempotent deliveries.
+- Keep `cloudflare/market-scheduler` disabled unless an operator explicitly
+  enables it with encrypted Worker secrets. It must never receive CardTrader or
+  database credentials.
 - Store prices as integer cents. Do not introduce floating-point persistence for
   money.
 
@@ -74,5 +82,7 @@ Preserve unrelated work and generated Drizzle migrations.
   `pnpm check`.
 - Commands/env/docs: keep README, development docs, `.env.example`,
   `CONTRIBUTING.md`, AGENTS.md, and the project skill mutually consistent.
+- Scheduler: update `docs/CLOUDFLARE_SCHEDULER.md` and the production rollout
+  whenever its clock, secret boundary, or enablement path changes.
 - Never run hosted smoke mutation flags, hosted migrations, webhook mutations,
   or paid-plan changes without explicit production authorization.
