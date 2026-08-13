@@ -7,6 +7,9 @@ an in-app and Telegram alert when a comparable listing is unusually cheap.
 ## MVP defaults
 
 - Google sign-in restricted to invited email addresses.
+- Administrators can issue short-lived, limited-use guest demonstration links.
+  A guest session lasts one hour, supports two watches and in-app alerts, and
+  cannot invoke manual scans or connect Telegram.
 - English, Mint/Near Mint, ungraded, unsigned, and unaltered listings.
 - EU/EEA seller countries, configurable in user settings and per watch.
 - Foil or non-foil and CardTrader Zero optional.

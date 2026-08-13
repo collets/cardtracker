@@ -111,6 +111,11 @@ The handler supports the one-time account-link flow. Link tokens are stored only
 as hashes, expire after ten minutes, and are consumed once. Notification delivery
 is idempotently tracked in PostgreSQL.
 
+Administrator-managed guest links use the same hashed-capability principle but
+redeem through the Auth.js guest Credentials callback. The `/guest` page accepts
+the raw token only from the URL fragment and shows a safe unavailable page when
+the token is missing, expired, revoked, malformed, or exhausted.
+
 ## Server actions
 
 Authenticated UI mutations use server actions rather than public REST routes.
@@ -118,6 +123,18 @@ Actions recheck the database user and role, validate form data, and scope
 user-owned objects by `userId`. Important actions include watch creation/update,
 manual watch scans, preference changes, Telegram linking, invitations, user
 administration, alert feedback, catalog synchronization, and scanner execution.
+Guest users can use the normal watch and alert actions within their quota, but
+manual-scan and Telegram actions enforce a member-only check at the server
+boundary as well as hiding their controls in the UI.
+
+Riftwatch does not treat a browser request as a distinct security principal:
+any request a browser can make can be reproduced by another HTTP client that has
+the same authenticated session. Server actions receive Next.js same-origin/CSRF
+protections, but authorization is always enforced again in the action itself.
+Guest sessions have no guest-capable REST mutation endpoints; replaying a guest
+session through curl or Postman therefore cannot bypass the same quota,
+ownership, expiry, or member-only checks used by the web UI. Cron and Telegram
+routes use their separate secrets and never accept a guest session.
 
 Alert feedback accepts one fixed outcome for an alert owned by the authenticated
 user. Saving feedback also marks that alert as read. A later answer replaces the

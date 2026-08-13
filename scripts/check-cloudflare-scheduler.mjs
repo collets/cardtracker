@@ -7,6 +7,7 @@ import path from "node:path";
 import worker, {
   marketScanUrl,
 } from "../cloudflare/market-scheduler/src/index.mjs";
+import { schedulerSecretName } from "./cloudflare-scheduler-secret-args.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const config = JSON.parse(
@@ -43,6 +44,12 @@ try {
   globalThis.fetch = originalFetch;
 }
 assert.equal(requested, false);
+
+assert.equal(
+  schedulerSecretName(["--", "RIFTWATCH_SCAN_URL"]),
+  "RIFTWATCH_SCAN_URL",
+);
+assert.equal(schedulerSecretName(["RIFTWATCH_SCAN_URL", "unsafe"]), null);
 
 process.stdout.write(
   "Cloudflare scheduler configuration is valid and disabled by default.\n",

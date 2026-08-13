@@ -12,7 +12,7 @@ import {
   restoreAlertToInbox,
   saveAlertFeedback,
 } from "@/lib/alerts/service";
-import { requireUser } from "@/lib/auth/guards";
+import { requireMemberUser, requireUser } from "@/lib/auth/guards";
 import { UserFacingError } from "@/lib/errors";
 import { runMarketScanner, scanUserWatchlist } from "@/lib/scanner/service";
 import { createTelegramLink, disconnectTelegram } from "@/lib/telegram/service";
@@ -84,9 +84,9 @@ export async function updateWatchAction(formData: FormData) {
 }
 
 export async function scanWatchAction(formData: FormData) {
-  const user = await requireUser();
   return actionResult(
     async () => {
+      const user = await requireMemberUser();
       const watchId = watchIdSchema.parse(formData.get("watchId"));
       const [watch] = await getDb()
         .select({ blueprintId: watches.blueprintId })
@@ -104,9 +104,9 @@ export async function scanWatchAction(formData: FormData) {
 }
 
 export async function scanAllWatchesAction() {
-  const user = await requireUser();
   return actionResult(
     async () => {
+      const user = await requireMemberUser();
       const result = await scanUserWatchlist(user.id);
       if (!result) throw new UserFacingError("No active watches to scan");
 
@@ -270,7 +270,7 @@ export async function bulkAddWatchesAction(formData: FormData) {
 }
 
 export async function disconnectTelegramAction() {
-  const user = await requireUser();
+  const user = await requireMemberUser();
   return actionResult(
     async () => {
       await disconnectTelegram(user.id);
@@ -282,7 +282,7 @@ export async function disconnectTelegramAction() {
 }
 
 export async function createTelegramLinkAction() {
-  const user = await requireUser();
+  const user = await requireMemberUser();
   const url = await createTelegramLink(user.id);
   redirect(url);
 }

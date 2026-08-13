@@ -33,6 +33,8 @@ that matches the task:
 - `pnpm dev:app` starts only Next.js and is intended for CI or controlled use.
 - `pnpm local:doctor` diagnoses environment and service health.
 - `pnpm check` is the minimum code-change verification.
+- `pnpm test:coverage` measures the fast Vitest suite; it does not replace
+  integration, browser, or hosted-smoke evidence.
 - `pnpm check:all` adds production build and browser tests.
 - `pnpm test:integration` uses disposable, local-only PostgreSQL fixtures.
 - `pnpm prod:check-env`, `pnpm ops:status`, and `pnpm smoke:hosted` are the
@@ -61,7 +63,8 @@ Preserve unrelated work and generated Drizzle migrations.
 - Treat server actions and route handlers as public trust boundaries: authenticate,
   authorize, validate, and scope user-owned records.
 - Keep production development-auth rejection, cron authentication, Telegram
-  webhook verification, hashed one-time link tokens, and idempotent deliveries.
+  webhook verification, hashed one-time link tokens, bounded guest-link
+  redemption/session expiry, and idempotent deliveries.
 - Keep `cloudflare/market-scheduler` disabled unless an operator explicitly
   enables it with encrypted Worker secrets. It must never receive CardTrader or
   database credentials.

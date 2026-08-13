@@ -59,7 +59,7 @@ export default async function DashboardPage() {
         description={`${rows.length} active watches · prices exclude shipping`}
         actions={
           <>
-            {rows.length > 0 ? (
+            {rows.length > 0 && user.kind !== "guest" ? (
               <ActionForm action={scanAllWatchesAction}>
                 <ActionSubmitButton
                   variant="outline"
@@ -158,16 +158,18 @@ export default async function DashboardPage() {
                     <Button asChild size="sm" variant="outline">
                       <Link href={`/watches/${watch.id}`}>Details</Link>
                     </Button>
-                    <ActionForm action={scanWatchAction}>
-                      <input type="hidden" name="watchId" value={watch.id} />
-                      <ActionSubmitButton
-                        size="sm"
-                        variant="ghost"
-                        pendingLabel="Scanning…"
-                      >
-                        <RefreshCw className="size-3.5" /> Scan
-                      </ActionSubmitButton>
-                    </ActionForm>
+                    {user.kind !== "guest" ? (
+                      <ActionForm action={scanWatchAction}>
+                        <input type="hidden" name="watchId" value={watch.id} />
+                        <ActionSubmitButton
+                          size="sm"
+                          variant="ghost"
+                          pendingLabel="Scanning…"
+                        >
+                          <RefreshCw className="size-3.5" /> Scan
+                        </ActionSubmitButton>
+                      </ActionForm>
+                    ) : null}
                     <ActionForm action={removeWatchAction} className="ml-auto">
                       <input type="hidden" name="watchId" value={watch.id} />
                       <ActionSubmitButton

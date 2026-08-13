@@ -37,6 +37,10 @@ export function CardArt({
           alt={alt}
           fill
           sizes={sizes}
+          // In development, avoid proxying third-party artwork through Next's
+          // image optimizer. An unreachable CardTrader image host should not
+          // produce server-side fetch timeout noise while working locally.
+          unoptimized={process.env.NODE_ENV === "development"}
           className="object-cover"
           onError={
             preferredSrc && preferredSrc !== src && imageSrc === preferredSrc

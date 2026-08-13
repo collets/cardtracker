@@ -1,4 +1,5 @@
 import NextAuth from "next-auth";
+import { encode } from "next-auth/jwt";
 import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
 import { DrizzleAdapter } from "@auth/drizzle-adapter";
@@ -6,6 +7,7 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import {
   accounts,
+  guestAccessRedemptions,
   invitations,
   sessions,
   userPreferences,
@@ -13,6 +15,8 @@ import {
   verificationTokens,
 } from "@/db/schema";
 import { resolveKnownUserRole } from "@/lib/auth/authorization";
+import { redeemGuestAccessToken } from "@/lib/guests/service";
+import { guestSessionMaxAge } from "@/lib/guests/session";
 import { normalizeEmail } from "@/lib/utils";
 
 const devAuthEnabled =
@@ -116,6 +120,25 @@ if (devAuthEnabled) {
     }),
   );
 }
+providers.push(
+  Credentials({
+    id: "guest",
+    name: "Guest access",
+    credentials: {
+      guestAccessToken: { label: "Guest access token", type: "text" },
+    },
+    async authorize(credentials) {
+      const guest = await redeemGuestAccessToken(credentials.guestAccessToken);
+      if (!guest) return null;
+      return {
+        id: guest.id,
+        email: guest.email,
+        name: guest.name,
+        image: guest.image,
+      };
+    },
+  }),
+);
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: DrizzleAdapter(getDb(), {
@@ -126,10 +149,28 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   }),
   providers,
   session: { strategy: "jwt" },
-  pages: { signIn: "/sign-in" },
+  jwt: {
+    async encode(params) {
+      const guestMaxAge = guestSessionMaxAge(params.token?.guestExpiresAt);
+      return encode({
+        ...params,
+        ...(guestMaxAge === undefined ? {} : { maxAge: guestMaxAge }),
+      });
+    },
+  },
+  pages: { signIn: "/sign-in", error: "/guest" },
   callbacks: {
     async signIn({ user, account, profile }) {
       if (!user.email) return false;
+      if (account?.provider === "guest") {
+        if (!user.id) return false;
+        const [guest] = await getDb()
+          .select({ kind: users.kind, disabled: users.disabled })
+          .from(users)
+          .where(eq(users.id, user.id))
+          .limit(1);
+        return guest?.kind === "guest" && !guest.disabled;
+      }
       if (
         account?.provider === "google" &&
         profile &&
@@ -142,14 +183,31 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (user?.id) token.userId = user.id;
       if (user?.email) {
         const [record] = await getDb()
-          .select({ id: users.id, role: users.role, disabled: users.disabled })
+          .select({
+            id: users.id,
+            role: users.role,
+            disabled: users.disabled,
+            kind: users.kind,
+            guestExpiresAt: guestAccessRedemptions.expiresAt,
+          })
           .from(users)
+          .leftJoin(
+            guestAccessRedemptions,
+            eq(guestAccessRedemptions.userId, users.id),
+          )
           .where(sql`lower(${users.email}) = ${normalizeEmail(user.email)}`)
           .limit(1);
         if (record) {
           token.userId = record.id;
           token.role = record.role;
           token.disabled = record.disabled;
+          if (record.kind === "guest" && record.guestExpiresAt) {
+            token.guestExpiresAt = Math.floor(
+              record.guestExpiresAt.getTime() / 1_000,
+            );
+          } else {
+            delete token.guestExpiresAt;
+          }
         }
       }
       return token;

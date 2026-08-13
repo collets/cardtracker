@@ -6,6 +6,7 @@ import {
   e2ePendingInviteEmail,
   e2eUserEmail,
   e2eWatchBlueprintId,
+  cleanE2eAdminWatch,
 } from "./database";
 
 async function signIn(page: Page, email: string) {
@@ -24,6 +25,7 @@ test.describe.serial("authenticated MVP", () => {
   test("admin discovers, creates, updates, and removes a watch", async ({
     page,
   }) => {
+    await cleanE2eAdminWatch();
     await signIn(page, e2eAdminEmail);
     await page.goto("/admin");
     await expect(
@@ -208,6 +210,181 @@ test.describe.serial("authenticated MVP", () => {
     await page.getByRole("checkbox", { name: "French" }).check();
     await page.getByRole("button", { name: "Save defaults" }).click();
     await expect(page.getByRole("checkbox", { name: "French" })).toBeChecked();
+  });
+
+  test("admin filters recent runs without losing their page position", async ({
+    page,
+  }) => {
+    await signIn(page, e2eAdminEmail);
+    await page.goto("/admin#recent-runs");
+    const recentRuns = page.getByRole("heading", { name: "Recent runs" });
+    await expect(recentRuns).toBeInViewport();
+
+    await page.getByRole("combobox", { name: "Run kind" }).click();
+    await page.getByRole("option", { name: "market", exact: true }).click();
+    await page.getByRole("button", { name: "Apply" }).click();
+
+    await expect(page).toHaveURL(/kind=market/);
+    await expect(recentRuns).toBeInViewport();
+    const rows = page.locator("table tbody tr");
+    await expect(rows).not.toHaveCount(0);
+    for (let index = 0; index < (await rows.count()); index += 1) {
+      await expect(rows.nth(index)).toContainText("market");
+      await expect(rows.nth(index)).not.toContainText("catalog");
+      await expect(rows.nth(index)).not.toContainText("cleanup");
+    }
+
+    await page.getByRole("button", { name: "Reset" }).click();
+    await expect(page).not.toHaveURL(/kind=/);
+    await expect(rows).toHaveCount(20);
+
+    await page.getByLabel("Run status").click();
+    await page.getByRole("option", { name: "failed", exact: true }).click();
+    await page.getByRole("button", { name: "Apply" }).click();
+    await expect(page).toHaveURL(/status=failed/);
+    await expect(rows).not.toHaveCount(0);
+    for (let index = 0; index < (await rows.count()); index += 1) {
+      await expect(rows.nth(index)).toContainText("failed");
+    }
+
+    await page.getByRole("button", { name: "Reset" }).click();
+    await expect(page).not.toHaveURL(/status=/);
+    const currentDate = new Date().toISOString().slice(0, 10);
+    const fromDate = page.getByRole("button", {
+      name: "Choose from date",
+    });
+    const toDate = page.getByRole("button", { name: "Choose to date" });
+    await fromDate.click();
+    await page.getByRole("button", { name: `Select ${currentDate}` }).click();
+    await toDate.click();
+    await page.getByRole("button", { name: `Select ${currentDate}` }).click();
+    await page.getByRole("button", { name: "Apply" }).click();
+    await expect(page).toHaveURL(new RegExp(`from=${currentDate}`));
+    await expect(page).toHaveURL(new RegExp(`to=${currentDate}`));
+
+    await page.goto("/admin?from=2097-08-12&to=2097-08-12#recent-runs");
+    await expect(rows).toHaveCount(1);
+    await expect(rows.first()).toContainText("catalog");
+
+    await page.getByRole("button", { name: "Choose from date" }).click();
+    const previousMonth = page.getByRole("button", {
+      name: "Go to the Previous Month",
+    });
+    const nextMonth = page.getByRole("button", {
+      name: "Go to the Next Month",
+    });
+    const calendarLayout = await page
+      .getByRole("grid", { name: /August 2097/ })
+      .evaluate((grid) => {
+        const previous = grid.parentElement?.querySelector(
+          "button[aria-label='Go to the Previous Month']",
+        );
+        const next = grid.parentElement?.querySelector(
+          "button[aria-label='Go to the Next Month']",
+        );
+        const selected = grid.parentElement?.querySelector(
+          "button[aria-label='Select 2097-08-12']",
+        );
+        if (!previous || !next || !selected) {
+          throw new Error("Calendar controls are missing");
+        }
+        return {
+          grid: grid.getBoundingClientRect(),
+          previous: previous.getBoundingClientRect(),
+          next: next.getBoundingClientRect(),
+          previousColor: getComputedStyle(previous).color,
+          selectedColor: getComputedStyle(selected).color,
+          selectedBackground: getComputedStyle(selected).backgroundColor,
+          selectedRadius: getComputedStyle(selected).borderRadius,
+        };
+      });
+    await expect(previousMonth).toHaveClass(/text-slate-300/);
+    await expect(nextMonth).toHaveClass(/text-slate-300/);
+    expect(
+      calendarLayout.next.left - calendarLayout.previous.left,
+    ).toBeGreaterThan(calendarLayout.grid.width / 2);
+    expect(calendarLayout.selectedRadius).toBe("8px");
+    expect(calendarLayout.selectedBackground).not.toBe("rgba(0, 0, 0, 0)");
+    await page.keyboard.press("Escape");
+
+    await page.goto("/admin?from=2097-08-13&to=2097-08-12#recent-runs");
+    await expect(
+      page.getByText("The “From” date must be on or before the “To” date."),
+    ).toBeVisible();
+    await expect(rows).toHaveCount(20);
+
+    const runFilterForm = page.locator("form:has(#run-kind)");
+    const controlBounds = await runFilterForm
+      .locator(
+        "#run-kind, #run-status, #run-from, #run-to, button[type='submit']",
+      )
+      .evaluateAll((elements) =>
+        elements.map((element) => {
+          const { bottom, top } = element.getBoundingClientRect();
+          return { bottom, top };
+        }),
+      );
+    const controlBottoms = controlBounds.map((bounds) => bounds.bottom);
+    expect(
+      Math.max(...controlBottoms) - Math.min(...controlBottoms),
+    ).toBeLessThanOrEqual(1);
+
+    const tableDimensions = await page.getByRole("table").evaluate((table) => ({
+      tableWidth: table.getBoundingClientRect().width,
+      containerWidth: table.parentElement?.getBoundingClientRect().width ?? 0,
+    }));
+    expect(tableDimensions.tableWidth).toBeGreaterThanOrEqual(
+      tableDimensions.containerWidth - 1,
+    );
+
+    await page.getByRole("button", { name: "Reset" }).click();
+    await expect(page.getByText(/Page 1 of \d+/)).toBeVisible();
+    await expect(rows).toHaveCount(20);
+    await page.getByRole("link", { name: "Next" }).scrollIntoViewIfNeeded();
+    await page.getByRole("link", { name: "Next" }).click();
+    await expect(page).toHaveURL(/page=2/);
+    await expect(page.getByText(/Page 2 of \d+/)).toBeVisible();
+    // The second page can be shorter, so browsers may clamp the scroll
+    // position. It must nevertheless remain away from the page top.
+    await expect
+      .poll(() => page.evaluate(() => window.scrollY))
+      .toBeGreaterThan(0);
+    await page.getByRole("link", { name: "Previous" }).click();
+    await expect(page).not.toHaveURL(/page=2/);
+    await expect(page.getByText(/Page 1 of \d+/)).toBeVisible();
+  });
+
+  test("guest links grant a constrained temporary session", async ({
+    page,
+  }) => {
+    await signIn(page, e2eAdminEmail);
+    await page.goto("/admin");
+    await page.getByRole("button", { name: "Create guest link" }).click();
+    const guestLink = await page.getByLabel("Guest access link").inputValue();
+
+    await page.context().clearCookies();
+    await page.goto(guestLink);
+    await expect(page).toHaveURL(/\/dashboard/);
+    await expect(
+      page.getByRole("heading", { name: "Market overview" }),
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Scan all" })).toHaveCount(0);
+
+    await page.goto(new URL("/settings", guestLink).toString());
+    await expect(
+      page.getByText(
+        "Telegram alerts are available to full Riftwatch accounts",
+      ),
+    ).toBeVisible();
+
+    await page.goto(new URL("/admin", guestLink).toString());
+    await expect(page).toHaveURL(/\/dashboard/);
+
+    await page.context().clearCookies();
+    await page.goto("/guest");
+    await expect(
+      page.getByRole("heading", { name: "Guest access unavailable" }),
+    ).toBeVisible();
   });
 
   test("core application remains usable at a mobile viewport", async ({

@@ -145,8 +145,8 @@ pnpm local:down
 | Command                                           | Behavior                                                       |
 | ------------------------------------------------- | -------------------------------------------------------------- |
 | `pnpm db:generate`                                | Generate a migration from schema changes                       |
-| `pnpm db:migrate`                                 | Apply pending committed migrations                             |
-| `pnpm db:migrate:remote -- --allow-hosted`        | Apply to an explicitly approved non-local direct database      |
+| `pnpm db:migrate`                                 | Apply pending migrations; prints every executed migration tag  |
+| `pnpm db:migrate:remote -- --allow-hosted`        | Apply to an approved non-local direct database; prints tags    |
 | `pnpm db:seed`                                    | Idempotently seed/update the development administrator         |
 | `pnpm db:studio`                                  | Open Drizzle Studio                                            |
 | `pnpm db:shell`                                   | Open `psql` inside the PostgreSQL container                    |
@@ -175,6 +175,7 @@ it. Catalog and scan commands also require `CARD_TRADER_AUTH_TOKEN`.
 | `pnpm lint`             | Run ESLint                                               |
 | `pnpm typecheck`        | Run TypeScript 6 in strict no-emit mode                  |
 | `pnpm test`             | Run Vitest once                                          |
+| `pnpm test:coverage`    | Measure fast unit, component, and route coverage locally |
 | `pnpm test:integration` | Run local PostgreSQL scanner/delivery integration tests  |
 | `pnpm test:watch`       | Run Vitest in watch mode                                 |
 | `pnpm test:e2e`         | Run Playwright browser tests                             |
@@ -218,6 +219,11 @@ Production validation rejects `AUTH_ENABLE_DEV_PROVIDER=true`.
 The build wrapper forces that one flag to `false`, so a local production build
 cannot accidentally include the development sign-in provider.
 
+Card artwork is optimized by Next.js in production. Development intentionally
+loads CardTrader artwork directly in the browser, so an unavailable artwork host
+cannot make the local Next.js server emit image-optimizer timeout errors. A
+browser image failure only affects that artwork; the card UI remains usable.
+
 ## Authentication
 
 Local setup defaults to the development provider. Open `/sign-in`, enter the
@@ -232,6 +238,21 @@ To exercise Google locally:
 4. Keep or disable the dev provider according to the test you are performing.
 
 Never enable the credentials-based development provider in production.
+
+### Guest demonstration access
+
+Administrators can create a guest link from **Administration**. A link is a
+hashed bearer capability with a 24-hour lifetime and a configurable visitor
+limit from one to five. Its raw value appears once, and is placed after `#` in
+the `/guest` URL so it is not sent in request paths, referrers, or ordinary
+access logs.
+
+Each successful redemption creates an internal guest account and grants one
+hour of absolute application access. Guests can browse the authenticated app,
+create or edit up to two watches, and receive in-app alerts. They cannot run
+manual scans, connect Telegram, access administration, or create more guest
+links. Expired guest watches are deactivated by the scanner before they can
+consume scheduled marketplace capacity.
 
 ## Catalog and market scanning
 
@@ -332,6 +353,8 @@ not accept a connection string as an argument or print one. It invokes the same
 Drizzle migration runner as `pnpm db:migrate`, so it applies only pending
 committed migrations. This is a hosted write: select the environment carefully,
 review the generated SQL first, and use it only with explicit operator approval.
+On success, both migration commands print each migration tag they executed, or
+`No pending migrations.` when the target schema is already current.
 
 Do not modify a migration that may already have been applied by another
 developer or environment; create a follow-up migration. Do not use destructive
@@ -378,6 +401,24 @@ fixtures refuse non-loopback database URLs.
 `pnpm test:integration` exercises scanner leases, evidence persistence, alert
 lifecycle, Telegram delivery idempotency, failures, and pruning against local
 PostgreSQL. Keep Docker running before invoking it.
+
+### Coverage model
+
+Riftwatch uses each test layer for the failures it can meaningfully observe:
+
+| Layer                  | Scope                                                                                                                              | Command                            |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| Unit/component/route   | Pure pricing, validation, client rendering, safe action results, and route authorization without external I/O                      | `pnpm test` / `pnpm test:coverage` |
+| PostgreSQL integration | Transactions, ownership, catalog persistence, guest capability limits, leases, scanner evidence, and Telegram delivery idempotency | `pnpm test:integration`            |
+| Browser E2E            | Authentication, navigation, responsive UI, accessible controls, page state, and server-action wiring                               | `pnpm test:e2e`                    |
+| Hosted smoke           | A deployed host's health, public surface, unauthenticated redirect, and unauthorized cron boundaries                               | `pnpm smoke:hosted -- --url <url>` |
+
+`pnpm test:coverage` uses Vitest's V8 provider and reports fast-test coverage
+only. It intentionally does not claim coverage for server-only database services
+or hosted infrastructure; those are exercised by the integration, browser, and
+hosted-smoke layers. Treat a material regression in the published report as a
+review signal, but prioritize meaningful boundary and failure-path coverage over
+an arbitrary global percentage.
 
 GitHub Actions runs the same checks on Node.js 24 with PostgreSQL 17. Third-party
 actions are pinned to immutable release commits, use the Node.js 24 action

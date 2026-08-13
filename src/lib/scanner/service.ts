@@ -16,11 +16,13 @@ import {
   alerts,
   blueprints,
   blueprintScanState,
+  guestAccessRedemptions,
   notificationDeliveries,
   priceObservations,
   scanRuns,
   telegramLinkTokens,
   userPreferences,
+  users,
   watches,
   watchMetrics,
 } from "@/db/schema";
@@ -75,7 +77,11 @@ export async function claimDueBlueprints(
         and (${onlyBlueprintId ?? null}::integer is null or state.blueprint_id = ${onlyBlueprintId ?? null})
         and exists (
           select 1 from watches watch
-          where watch.blueprint_id = state.blueprint_id and watch.active = true
+          inner join users account on account.id = watch.user_id
+          left join guest_access_redemptions guest on guest.user_id = account.id
+          where watch.blueprint_id = state.blueprint_id
+            and watch.active = true
+            and (account.kind = 'member' or guest.expires_at > now())
         )
       order by state.blueprint_id
       limit ${limit}
@@ -88,6 +94,25 @@ export async function claimDueBlueprints(
     returning state.blueprint_id
   `;
   return rows.map((row) => row.blueprint_id);
+}
+
+async function deactivateExpiredGuestWatches() {
+  await getDb()
+    .update(watches)
+    .set({ active: false, updatedAt: new Date() })
+    .where(
+      and(
+        eq(watches.active, true),
+        sql`exists (
+          select 1
+            from ${users} account
+            inner join ${guestAccessRedemptions} guest on guest.user_id = account.id
+            where account.id = ${watches.userId}
+            and account.kind = 'guest'
+            and guest.expires_at <= now()
+        )`,
+      ),
+    );
 }
 
 async function recordBlueprintFailure(blueprintId: number, error: unknown) {
@@ -331,6 +356,7 @@ export async function runMarketScanner(
   ) {
     throw new Error("Choose either one explicit blueprint or a blueprint list");
   }
+  await deactivateExpiredGuestWatches();
   const [run] = await getDb()
     .insert(scanRuns)
     .values({ kind: "market" })
