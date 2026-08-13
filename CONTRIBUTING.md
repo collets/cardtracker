@@ -111,6 +111,10 @@ bypass that guard.
   its deploy/secret commands without explicit environment approval.
 - Keep Auth.js development credentials disabled in production.
 - Keep the production build wrapper's development-provider override intact.
+- Guest links are hashed, limited-use bearer capabilities. Keep their raw token
+  in the URL fragment until redemption; do not expose guest-capable REST
+  mutations or rely on the client to enforce guest restrictions. Server actions
+  must recheck guest expiry, ownership, quotas, and member-only capabilities.
 - Treat listing links and prices as advisory; Riftwatch never purchases items.
 
 If a secret is accidentally committed, stop, revoke it, and follow repository
@@ -130,6 +134,13 @@ owner instructions. Removing it from the latest commit is not sufficient.
 Database-backed service changes must also pass `pnpm test:integration`. The
 integration and Playwright fixture loaders reject non-loopback database URLs;
 do not weaken that guard for convenience.
+
+Use `pnpm test:coverage` when changing fast-testable logic, components, or route
+boundaries. Its V8 report is intentionally limited to the fast Vitest suite;
+database transactions, browser journeys, and hosted topology are covered by
+their corresponding integration, Playwright, and safe-smoke layers. Do not add
+tests merely to inflate a global percentage—cover authorization, validation,
+error handling, and business decisions at the narrowest useful layer.
 
 Production preparation and operator actions are separate. Repository work may
 add or test `prod:check-env`, `ops:status`, and safe hosted smoke behavior, but

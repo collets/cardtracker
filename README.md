@@ -42,6 +42,7 @@ Turbopack. PostgreSQL remains running after the Next.js process stops. Use
 | `pnpm cron:catalog`                        | Synchronize Riftbound expansions and blueprints           |
 | `pnpm cron:scan`                           | Scan all due watched blueprints                           |
 | `pnpm test:integration`                    | Exercise scanner persistence against local PostgreSQL     |
+| `pnpm test:coverage`                       | Measure fast unit/component/route coverage locally        |
 | `pnpm prod:check-env`                      | Validate production configuration without printing values |
 | `pnpm ops:status`                          | Report local operational capacity and failures            |
 | `pnpm smoke:hosted`                        | Run safe checks against an explicitly selected deployment |

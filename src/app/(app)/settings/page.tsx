@@ -55,7 +55,11 @@ export default async function AccountPage() {
       <PageHeading
         eyebrow="Account"
         title="Account"
-        description={`${account?.email ?? sessionUser.email} · ${account?.watchQuota ?? 50} watch quota`}
+        description={
+          sessionUser.kind === "guest"
+            ? "Guest demonstration access · 2-watch quota"
+            : `${account?.email ?? sessionUser.email} · ${account?.watchQuota ?? 50} watch quota`
+        }
       />
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
@@ -149,7 +153,13 @@ export default async function AccountPage() {
             </div>
           </CardHeader>
           <CardContent>
-            {telegram ? (
+            {sessionUser.kind === "guest" ? (
+              <div className="rounded-xl border border-cyan-300/20 bg-cyan-300/[0.04] p-4 text-sm leading-6 text-slate-300">
+                Telegram alerts are available to full Riftwatch accounts. Guest
+                access keeps the demo focused on the in-app alert experience and
+                expires automatically after one hour.
+              </div>
+            ) : telegram ? (
               <div>
                 <p className="text-sm text-slate-300">
                   Linked to{" "}

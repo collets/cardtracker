@@ -78,12 +78,14 @@ export default async function WatchPage({
           .filter(Boolean)
           .join(" · ")}
         actions={
-          <ActionForm action={scanWatchAction}>
-            <input type="hidden" name="watchId" value={watchId} />
-            <ActionSubmitButton variant="outline" pendingLabel="Scanning…">
-              <RefreshCw className="size-4" /> Scan now
-            </ActionSubmitButton>
-          </ActionForm>
+          user.kind !== "guest" ? (
+            <ActionForm action={scanWatchAction}>
+              <input type="hidden" name="watchId" value={watchId} />
+              <ActionSubmitButton variant="outline" pendingLabel="Scanning…">
+                <RefreshCw className="size-4" /> Scan now
+              </ActionSubmitButton>
+            </ActionForm>
+          ) : undefined
         }
       />
       <div className="grid gap-6 lg:grid-cols-[220px_1fr]">

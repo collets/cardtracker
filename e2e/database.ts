@@ -1,4 +1,4 @@
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, like } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import {
@@ -6,6 +6,7 @@ import {
   blueprints,
   expansions,
   invitations,
+  scanRuns,
   userPreferences,
   users,
   watches,
@@ -28,6 +29,15 @@ const e2eAlertId = "00000000-0000-4000-8000-000000000821";
 const e2eInvitationIds = [
   "00000000-0000-4000-8000-000000000831",
   "00000000-0000-4000-8000-000000000832",
+] as const;
+const e2eRunIds = [
+  ...Array.from(
+    { length: 27 },
+    (_, index) =>
+      `00000000-0000-4000-8000-${String(841 + index).padStart(12, "0")}`,
+  ),
+  "00000000-0000-4000-8000-000000000871",
+  "00000000-0000-4000-8000-000000000872",
 ] as const;
 
 function databaseUrl() {
@@ -57,6 +67,10 @@ export async function cleanE2eFixtures() {
     await db
       .delete(invitations)
       .where(inArray(invitations.id, [...e2eInvitationIds]));
+    await db.delete(scanRuns).where(inArray(scanRuns.id, [...e2eRunIds]));
+    await db
+      .delete(users)
+      .where(like(users.email, "guest-%@guest.riftwatch.test"));
     await db.delete(expansions).where(eq(expansions.id, e2eExpansionId));
     await db.delete(users).where(inArray(users.id, [...e2eUserIds]));
   });
@@ -100,6 +114,26 @@ export async function seedE2eFixtures() {
         role: "user",
         invitedBy: e2eUserIds[0],
         acceptedAt: new Date(),
+      },
+    ]);
+    await db.insert(scanRuns).values([
+      ...e2eRunIds.slice(0, 27).map((id, index) => ({
+        id,
+        kind: "market" as const,
+        status: "succeeded" as const,
+        startedAt: new Date(Date.UTC(2097, 7, 13, 12, index)),
+      })),
+      {
+        id: e2eRunIds[27],
+        kind: "catalog",
+        status: "succeeded",
+        startedAt: new Date("2097-08-12T12:00:00.000Z"),
+      },
+      {
+        id: e2eRunIds[28],
+        kind: "cleanup",
+        status: "failed",
+        startedAt: new Date("2097-08-11T12:00:00.000Z"),
       },
     ]);
     await db.insert(expansions).values({

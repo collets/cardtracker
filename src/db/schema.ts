@@ -23,6 +23,7 @@ import {
 } from "@/lib/constants";
 
 export const userRoleEnum = pgEnum("user_role", ["admin", "user"]);
+export const userKindEnum = pgEnum("user_kind", ["member", "guest"]);
 export const runKindEnum = pgEnum("run_kind", ["catalog", "market", "cleanup"]);
 export const runStatusEnum = pgEnum("run_status", [
   "running",
@@ -61,6 +62,7 @@ export const users = pgTable(
     }),
     image: text("image"),
     role: userRoleEnum("role").notNull().default("user"),
+    kind: userKindEnum("kind").notNull().default("member"),
     watchQuota: integer("watch_quota").notNull().default(50),
     disabled: boolean("disabled").notNull().default(false),
     createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
@@ -131,6 +133,54 @@ export const invitations = pgTable(
       .defaultNow(),
   },
   (table) => [uniqueIndex("invitations_email_unique").on(table.email)],
+);
+
+export const guestAccessLinks = pgTable(
+  "guest_access_links",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tokenHash: text("token_hash").notNull(),
+    maxUses: integer("max_uses").notNull(),
+    usedCount: integer("used_count").notNull().default(0),
+    expiresAt: timestamp("expires_at", {
+      mode: "date",
+      withTimezone: true,
+    }).notNull(),
+    revokedAt: timestamp("revoked_at", { mode: "date", withTimezone: true }),
+    createdBy: uuid("created_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("guest_access_links_token_hash_unique").on(table.tokenHash),
+    index("guest_access_links_active_idx").on(table.expiresAt, table.revokedAt),
+  ],
+);
+
+export const guestAccessRedemptions = pgTable(
+  "guest_access_redemptions",
+  {
+    userId: uuid("user_id")
+      .primaryKey()
+      .references(() => users.id, { onDelete: "cascade" }),
+    linkId: uuid("link_id")
+      .notNull()
+      .references(() => guestAccessLinks.id),
+    expiresAt: timestamp("expires_at", {
+      mode: "date",
+      withTimezone: true,
+    }).notNull(),
+    createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("guest_access_redemptions_expiry_idx").on(table.expiresAt),
+    index("guest_access_redemptions_link_idx").on(table.linkId),
+  ],
 );
 
 export const userPreferences = pgTable("user_preferences", {
@@ -456,7 +506,33 @@ export const userRelations = relations(users, ({ many, one }) => ({
   watches: many(watches),
   preferences: one(userPreferences),
   telegramChannel: one(telegramChannels),
+  guestAccessRedemption: one(guestAccessRedemptions),
 }));
+
+export const guestAccessLinkRelations = relations(
+  guestAccessLinks,
+  ({ many, one }) => ({
+    createdByUser: one(users, {
+      fields: [guestAccessLinks.createdBy],
+      references: [users.id],
+    }),
+    redemptions: many(guestAccessRedemptions),
+  }),
+);
+
+export const guestAccessRedemptionRelations = relations(
+  guestAccessRedemptions,
+  ({ one }) => ({
+    user: one(users, {
+      fields: [guestAccessRedemptions.userId],
+      references: [users.id],
+    }),
+    link: one(guestAccessLinks, {
+      fields: [guestAccessRedemptions.linkId],
+      references: [guestAccessLinks.id],
+    }),
+  }),
+);
 
 export const blueprintRelations = relations(blueprints, ({ one, many }) => ({
   expansion: one(expansions, {

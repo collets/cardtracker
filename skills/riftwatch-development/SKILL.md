@@ -46,6 +46,9 @@ Work from the repository root and preserve unrelated developer changes.
   the pure deal evaluator.
 - For integration work, use `pnpm test:integration`; its fixtures must retain the
   non-loopback database guard and deterministic cleanup.
+- Use `pnpm test:coverage` to audit pure, component, and route-boundary tests.
+  Do not use its percentage as a substitute for database integration, browser,
+  or hosted-smoke coverage.
 - For deployment preparation, use `pnpm prod:check-env`, `pnpm ops:status`, and
   `pnpm smoke:hosted`. Do not add an authorized hosted flag or Telegram webhook
   mutation unless the operator explicitly authorizes that environment.
@@ -64,6 +67,9 @@ Work from the repository root and preserve unrelated developer changes.
   `CARD_TRADER_AUTH_TOKEN` only in the server-side Authorization header.
 - Never commit the raw Postman collection; it contains an embedded credential.
 - Never enable the development auth provider in production.
+- Keep guest links as hashed, bounded-use capabilities. Their raw token belongs
+  only in a URL fragment until server-side redemption; do not treat a browser
+  request as a security boundary or add guest-capable REST mutations.
 - Never run `local:reset` against a shared or hosted database.
 - Never use integration or E2E fixtures against a shared or hosted database.
 - Preserve the local lifecycle command's non-loopback database guard.

@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, like } from "drizzle-orm";
 import { getDb, getSql } from "@/db";
 import {
   alertFeedback,
@@ -7,6 +7,7 @@ import {
   blueprints,
   blueprintScanState,
   expansions,
+  guestAccessLinks,
   notificationDeliveries,
   priceObservations,
   scanRuns,
@@ -37,6 +38,11 @@ import {
   dispatchPendingNotifications,
   handleTelegramUpdate,
 } from "@/lib/telegram/service";
+import {
+  createGuestAccessLink,
+  redeemGuestAccessToken,
+  revokeGuestAccessLink,
+} from "@/lib/guests/service";
 
 const expansionId = 990_001;
 const blueprintId = 990_001;
@@ -112,6 +118,12 @@ function listingsForBlueprint(
 }
 
 async function cleanFixtures() {
+  await getDb()
+    .delete(users)
+    .where(like(users.email, "guest-%@guest.riftwatch.test"));
+  await getDb()
+    .delete(guestAccessLinks)
+    .where(inArray(guestAccessLinks.createdBy, [...userIds]));
   await getDb().delete(expansions).where(eq(expansions.id, expansionId));
   await getDb()
     .delete(users)
@@ -895,5 +907,51 @@ describe("scanner persistence", () => {
     expect(["integration-replay-a", "integration-replay-b"]).toContain(
       channel?.chatId,
     );
+  });
+
+  it("redeems a guest link only up to its configured visitor limit", async () => {
+    const link = await createGuestAccessLink(userIds[0], 1);
+    const token = new URL(link.url).hash.slice(1);
+    expect(token).toHaveLength(43);
+
+    const guests = await Promise.all([
+      redeemGuestAccessToken(token),
+      redeemGuestAccessToken(token),
+    ]);
+    const createdGuests = guests.filter(
+      (guest): guest is NonNullable<typeof guest> => guest !== null,
+    );
+    expect(createdGuests).toHaveLength(1);
+    expect(createdGuests[0]).toMatchObject({
+      kind: "guest",
+      watchQuota: 2,
+    });
+
+    const [storedLink] = await getDb()
+      .select({ usedCount: guestAccessLinks.usedCount })
+      .from(guestAccessLinks)
+      .where(eq(guestAccessLinks.createdBy, userIds[0]))
+      .orderBy(desc(guestAccessLinks.createdAt))
+      .limit(1);
+    expect(storedLink).toEqual({ usedCount: 1 });
+  });
+
+  it("refuses malformed and revoked guest capabilities without creating users", async () => {
+    await expect(redeemGuestAccessToken("not-a-token")).resolves.toBeNull();
+
+    const link = await createGuestAccessLink(userIds[0], 1);
+    const token = new URL(link.url).hash.slice(1);
+    const [stored] = await getDb()
+      .select({ id: guestAccessLinks.id })
+      .from(guestAccessLinks)
+      .where(eq(guestAccessLinks.createdBy, userIds[0]))
+      .orderBy(desc(guestAccessLinks.createdAt))
+      .limit(1);
+    if (!stored) throw new Error("Guest link fixture was not created");
+
+    await expect(revokeGuestAccessLink(stored.id)).resolves.toMatchObject({
+      id: stored.id,
+    });
+    await expect(redeemGuestAccessToken(token)).resolves.toBeNull();
   });
 });

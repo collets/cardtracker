@@ -31,6 +31,7 @@ export default defineConfig({
         "playwright-only-secret-at-least-32-characters",
       AUTH_ENABLE_DEV_PROVIDER: "true",
       ADMIN_EMAIL: "e2e-admin@riftwatch.test",
+      NEXT_PUBLIC_APP_URL: "http://127.0.0.1:3000",
     },
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],

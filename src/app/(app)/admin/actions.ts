@@ -10,6 +10,10 @@ import { synchronizeCatalog } from "@/lib/catalog/service";
 import { runMarketScanner } from "@/lib/scanner/service";
 import { normalizeEmail } from "@/lib/utils";
 import { UserFacingError } from "@/lib/errors";
+import {
+  createGuestAccessLink,
+  revokeGuestAccessLink,
+} from "@/lib/guests/service";
 import { z } from "zod";
 
 const invitationSchema = z.object({
@@ -26,6 +30,14 @@ const userUpdateSchema = z.object({
 
 const invitationRevocationSchema = z.object({
   invitationId: z.uuid(),
+});
+
+const guestAccessLinkSchema = z.object({
+  maxUses: z.coerce.number().int().min(1).max(5),
+});
+
+const guestAccessRevocationSchema = z.object({
+  linkId: z.uuid(),
 });
 
 export async function inviteUserAction(formData: FormData) {
@@ -70,6 +82,40 @@ export async function revokePendingInvitationAction(formData: FormData) {
     },
     "Invitation revoked",
     "The invitation could not be revoked. Please retry.",
+  );
+}
+
+export async function createGuestAccessLinkAction(formData: FormData) {
+  const admin = await requireAdmin();
+  return actionResult(
+    async () => {
+      const { maxUses } = guestAccessLinkSchema.parse({
+        maxUses: formData.get("maxUses"),
+      });
+      const link = await createGuestAccessLink(admin.id, maxUses);
+      revalidatePath("/admin");
+      return link;
+    },
+    ({ maxUses }) =>
+      `Guest link created for ${maxUses} visitor${maxUses === 1 ? "" : "s"}`,
+    "The guest link could not be created. Please retry.",
+  );
+}
+
+export async function revokeGuestAccessLinkAction(formData: FormData) {
+  await requireAdmin();
+  return actionResult(
+    async () => {
+      const { linkId } = guestAccessRevocationSchema.parse({
+        linkId: formData.get("linkId"),
+      });
+      const revoked = await revokeGuestAccessLink(linkId);
+      if (!revoked)
+        throw new UserFacingError("Guest link is already unavailable");
+      revalidatePath("/admin");
+    },
+    "Guest link revoked",
+    "The guest link could not be revoked. Please retry.",
   );
 }
 
