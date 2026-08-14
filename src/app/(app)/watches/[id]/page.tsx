@@ -8,6 +8,7 @@ import {
   blueprints,
   expansions,
   priceObservations,
+  thresholdRecommendations,
   watches,
   watchMetrics,
 } from "@/db/schema";
@@ -15,6 +16,7 @@ import { CardArt } from "@/components/card-art";
 import { ActionForm, ActionSubmitButton } from "@/components/action-feedback";
 import { PageHeading } from "@/components/page-heading";
 import { PriceChart } from "@/components/price-chart";
+import { ThresholdRecommendationDialog } from "@/components/threshold-recommendation-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -39,8 +41,10 @@ import { formatEuro } from "@/lib/utils";
 
 export default async function WatchPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ recommendation?: string }>;
 }) {
   const user = await requireUser();
   const watchId = (await params).id;
@@ -63,10 +67,27 @@ export default async function WatchPage({
     .from(priceObservations)
     .where(eq(priceObservations.watchId, watchId))
     .orderBy(asc(priceObservations.bucketAt));
+  const recommendationId = (await searchParams).recommendation;
+  const [recommendation] = recommendationId
+    ? await getDb()
+        .select()
+        .from(thresholdRecommendations)
+        .where(
+          and(
+            eq(thresholdRecommendations.id, recommendationId),
+            eq(thresholdRecommendations.watchId, watchId),
+            eq(thresholdRecommendations.status, "pending"),
+          ),
+        )
+        .limit(1)
+    : [];
   const candidate = row.metric?.candidate;
 
   return (
     <>
+      {recommendation ? (
+        <ThresholdRecommendationDialog recommendation={recommendation} />
+      ) : null}
       <PageHeading
         eyebrow={row.expansion.name}
         title={row.card.name}
@@ -171,7 +192,7 @@ export default async function WatchPage({
               </CardContent>
             </Card>
           ) : null}
-          <Card>
+          <Card id="watch-filters" className="scroll-mt-6">
             <CardHeader>
               <CardTitle>Watch filters</CardTitle>
             </CardHeader>
@@ -288,8 +309,9 @@ export default async function WatchPage({
                     id="minSavingsEuros"
                     name="minSavingsEuros"
                     type="number"
+                    inputMode="decimal"
                     min="0"
-                    step="0.5"
+                    step="0.01"
                     defaultValue={row.watch.minSavingsCents / 100}
                   />
                 </div>

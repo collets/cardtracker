@@ -21,6 +21,7 @@ import {
   priceObservations,
   scanRuns,
   telegramLinkTokens,
+  thresholdRecommendations,
   userPreferences,
   users,
   watches,
@@ -42,8 +43,10 @@ import {
 } from "@/lib/scanner/marketplace";
 import {
   dispatchPendingNotifications,
+  queueThresholdRecommendationDelivery,
   queueTelegramDelivery,
 } from "@/lib/telegram/service";
+import { suggestThresholds } from "@/lib/recommendations/suggestion";
 
 const BLUEPRINT_PROCESS_CONCURRENCY = 5;
 const MILLISECONDS_PER_MINUTE = 60_000;
@@ -133,8 +136,13 @@ async function processBlueprintListings(
 ): Promise<{ watches: number; alerts: number }> {
   try {
     const watchRows = await getDb()
-      .select({ watch: watches, preferences: userPreferences })
+      .select({
+        watch: watches,
+        preferences: userPreferences,
+        userKind: users.kind,
+      })
       .from(watches)
+      .innerJoin(users, eq(users.id, watches.userId))
       .leftJoin(userPreferences, eq(userPreferences.userId, watches.userId))
       .where(
         and(eq(watches.blueprintId, blueprintId), eq(watches.active, true)),
@@ -217,6 +225,33 @@ async function processBlueprintListings(
           target: [priceObservations.watchId, priceObservations.bucketAt],
           set: observationValues,
         });
+
+      if (row.userKind === "member") {
+        const suggestion = suggestThresholds({
+          discountPercent: watch.discountPercent,
+          minSavingsCents: watch.minSavingsCents,
+          referencePriceCents: evaluation.referencePriceCents,
+          eligibleCount: evaluation.eligibleListings.length,
+        });
+        if (suggestion && evaluation.referencePriceCents) {
+          const [savedRecommendation] = await getDb()
+            .insert(thresholdRecommendations)
+            .values({
+              watchId: watch.id,
+              currentDiscountPercent: watch.discountPercent,
+              currentMinSavingsCents: watch.minSavingsCents,
+              proposedDiscountPercent: suggestion.discountPercent,
+              proposedMinSavingsCents: suggestion.minSavingsCents,
+              referencePriceCents: evaluation.referencePriceCents,
+              eligibleCount: evaluation.eligibleListings.length,
+            })
+            .onConflictDoNothing()
+            .returning({ id: thresholdRecommendations.id });
+          if (savedRecommendation) {
+            await queueThresholdRecommendationDelivery(savedRecommendation.id);
+          }
+        }
+      }
 
       const alertsForWatch = await getDb()
         .select()

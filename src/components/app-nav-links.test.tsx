@@ -40,6 +40,26 @@ describe("application navigation", () => {
     );
   });
 
+  it("shows the combined alert and recommendation count", () => {
+    render(
+      <PrimaryNavigation
+        role="user"
+        attention={{
+          unreadDeals: 1,
+          pendingRecommendations: 2,
+          total: 3,
+        }}
+      />,
+    );
+
+    const alertsLink = screen.getByRole("link", { name: "Alerts" });
+    expect(alertsLink).toHaveTextContent("3");
+    expect(alertsLink).toHaveAttribute(
+      "aria-description",
+      "Alerts: 1 unread deal, 2 pending recommendations",
+    );
+  });
+
   it("keeps account navigation separate and exposes Admin by role", () => {
     pathname = "/settings";
     render(

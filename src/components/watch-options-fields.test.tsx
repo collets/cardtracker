@@ -40,7 +40,11 @@ describe("WatchOptionsFields", () => {
     expect(screen.getByLabelText("Minimum discount")).toHaveValue(35);
     expect(screen.getByLabelText("Minimum saving")).toHaveAttribute(
       "step",
-      "0.5",
+      "0.01",
+    );
+    expect(screen.getByLabelText("Minimum saving")).toHaveAttribute(
+      "inputmode",
+      "decimal",
     );
     expect(screen.getByLabelText("Minimum saving")).toHaveValue(12.5);
   });

@@ -1,8 +1,8 @@
 import Link from "next/link";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { getDb } from "@/db";
-import { userPreferences } from "@/db/schema";
+import { userPreferences, watches } from "@/db/schema";
 import { CatalogToolbar } from "@/components/catalog-filters";
 import {
   CatalogCardActions,
@@ -71,7 +71,7 @@ export default async function CardsPage({
 }) {
   const requestedFilters = parseCatalogFilters(await searchParams);
   const user = await requireUser();
-  const [result, preferences] = await Promise.all([
+  const [result, preferences, watchedRows] = await Promise.all([
     searchCatalog(requestedFilters),
     getDb()
       .select()
@@ -79,8 +79,15 @@ export default async function CardsPage({
       .where(eq(userPreferences.userId, user.id))
       .limit(1)
       .then((rows) => rows[0]),
+    getDb()
+      .select({ blueprintId: watches.blueprintId })
+      .from(watches)
+      .where(and(eq(watches.userId, user.id), eq(watches.active, true))),
   ]);
   const filters = { ...requestedFilters, page: result.page };
+  const watchedBlueprintIds = new Set(
+    watchedRows.map(({ blueprintId }) => blueprintId),
+  );
   const firstResult = result.total
     ? (result.page - 1) * filters.perPage + 1
     : 0;
@@ -107,7 +114,7 @@ export default async function CardsPage({
         description="Search and filter every active CardTrader printing. Open a card to turn the exact printing into a price watch."
       />
 
-      <CatalogSelectionProvider>
+      <CatalogSelectionProvider watchedIds={[...watchedBlueprintIds]}>
         <CatalogToolbar
           filters={filters}
           expansions={result.expansionOptions}
@@ -137,8 +144,14 @@ export default async function CardsPage({
                   "No matching printings"
                 )}
               </p>
-              {selectionCards.length ? (
-                <CatalogPageSelection cards={selectionCards} />
+              {selectionCards.some(
+                (card) => !watchedBlueprintIds.has(card.id),
+              ) ? (
+                <CatalogPageSelection
+                  cards={selectionCards.filter(
+                    (card) => !watchedBlueprintIds.has(card.id),
+                  )}
+                />
               ) : null}
             </div>
             {result.totalPages > 1 ? (
@@ -192,6 +205,7 @@ export default async function CardsPage({
                   >
                     <CatalogCardActions
                       card={selectionCards.find((item) => item.id === card.id)!}
+                      watched={watchedBlueprintIds.has(card.id)}
                     />
                     <Link href={`/cards/${card.id}`} className="block h-full">
                       <CardArt

@@ -37,6 +37,10 @@ export const watchInputSchema = z.object({
     .number()
     .min(0)
     .max(100_000)
+    .refine(
+      (value) => Math.abs(value * 100 - Math.round(value * 100)) < 1e-8,
+      "Minimum saving cannot use fractions of a cent",
+    )
     .default(DEFAULT_MIN_SAVINGS_CENTS / 100),
 });
 

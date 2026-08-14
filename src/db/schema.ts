@@ -2,6 +2,7 @@ import { relations, sql } from "drizzle-orm";
 import {
   bigint,
   boolean,
+  check,
   index,
   integer,
   jsonb,
@@ -40,6 +41,12 @@ export const deliveryStatusEnum = pgEnum("delivery_status", [
   "pending",
   "sent",
   "failed",
+]);
+export const recommendationStatusEnum = pgEnum("recommendation_status", [
+  "pending",
+  "applied",
+  "dismissed",
+  "stale",
 ]);
 export const alertFeedbackOutcomeEnum = pgEnum("alert_feedback_outcome", [
   "purchased",
@@ -446,6 +453,34 @@ export const alertFeedback = pgTable(
   ],
 );
 
+export const thresholdRecommendations = pgTable(
+  "threshold_recommendations",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    watchId: uuid("watch_id")
+      .notNull()
+      .references(() => watches.id, { onDelete: "cascade" }),
+    status: recommendationStatusEnum("status").notNull().default("pending"),
+    currentDiscountPercent: integer("current_discount_percent").notNull(),
+    currentMinSavingsCents: integer("current_min_savings_cents").notNull(),
+    proposedDiscountPercent: integer("proposed_discount_percent").notNull(),
+    proposedMinSavingsCents: integer("proposed_min_savings_cents").notNull(),
+    referencePriceCents: integer("reference_price_cents").notNull(),
+    eligibleCount: integer("eligible_count").notNull(),
+    createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    resolvedAt: timestamp("resolved_at", { mode: "date", withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex("threshold_recommendations_watch_unique").on(table.watchId),
+    index("threshold_recommendations_status_created_idx").on(
+      table.status,
+      table.createdAt,
+    ),
+  ],
+);
+
 export const telegramChannels = pgTable("telegram_channels", {
   userId: uuid("user_id")
     .primaryKey()
@@ -484,9 +519,13 @@ export const notificationDeliveries = pgTable(
   "notification_deliveries",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    alertId: uuid("alert_id")
-      .notNull()
-      .references(() => alerts.id, { onDelete: "cascade" }),
+    alertId: uuid("alert_id").references(() => alerts.id, {
+      onDelete: "cascade",
+    }),
+    recommendationId: uuid("recommendation_id").references(
+      () => thresholdRecommendations.id,
+      { onDelete: "cascade" },
+    ),
     channel: text("channel").notNull(),
     dedupeKey: text("dedupe_key").notNull(),
     status: deliveryStatusEnum("status").notNull().default("pending"),
@@ -499,6 +538,14 @@ export const notificationDeliveries = pgTable(
   },
   (table) => [
     uniqueIndex("notification_delivery_dedupe_unique").on(table.dedupeKey),
+    index("notification_deliveries_alert_idx").on(table.alertId),
+    index("notification_deliveries_recommendation_idx").on(
+      table.recommendationId,
+    ),
+    check(
+      "notification_deliveries_one_source_check",
+      sql`num_nonnulls(${table.alertId}, ${table.recommendationId}) = 1`,
+    ),
   ],
 );
 

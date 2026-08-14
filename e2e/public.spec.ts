@@ -6,8 +6,39 @@ test("public landing page explains the product", async ({ page }) => {
     page.getByRole("heading", { name: /catch the listing/i }),
   ).toBeVisible();
   await expect(
-    page.getByRole("link", { name: /open riftwatch/i }),
+    page.getByRole("link", { name: /invited\? sign in/i }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("heading", {
+      name: /a low price only matters when the comparison is fair/i,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", {
+      name: /from catalog search to a useful alert/i,
+    }),
+  ).toBeVisible();
+  await expect(page.getByText("No automatic purchases")).toBeVisible();
+  await expect(
+    page.getByRole("img", {
+      name: "Lux - Crownguard, Crystal Rose Alternate Art",
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/not affiliated with or endorsed by/i),
+  ).toBeVisible();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(
+    page.getByRole("heading", { name: /catch the listing/i }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      () =>
+        document.documentElement.scrollWidth <=
+        document.documentElement.clientWidth,
+    ),
+  ).toBe(true);
 });
 
 test("sign-in page does not expose server credentials", async ({ page }) => {

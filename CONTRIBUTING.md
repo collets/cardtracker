@@ -62,6 +62,8 @@ reports, or the raw CardTrader Postman collection.
 - `src/lib/catalog`: Riftbound catalog synchronization.
 - `src/lib/deals`: pure deal eligibility and pricing calculations.
 - `src/lib/scanner`: leases, batch execution, observations, and alert lifecycle.
+- `src/lib/recommendations`: pure threshold suggestions and authorized,
+  optimistic recommendation resolution.
 - `src/lib/telegram`: linking, webhook processing, and delivery.
 - `src/lib/watches`: watch validation and authorized persistence.
 - `scripts`: deterministic local development orchestration.
@@ -69,6 +71,11 @@ reports, or the raw CardTrader Postman collection.
 Prefer pure functions for pricing rules. Keep external payload parsing in the
 integration layer and database transactions in services. Client components must
 not import server-only modules.
+
+Threshold recommendations must reuse scanner evidence rather than add a
+CardTrader call. Preserve one recommendation per member watch, guest exclusion,
+idempotent Telegram delivery, cent precision for low-value cards, and the
+optimistic check that protects manual threshold edits.
 
 ## Database changes
 

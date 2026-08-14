@@ -127,6 +127,13 @@ Guest users can use the normal watch and alert actions within their quota, but
 manual-scan and Telegram actions enforce a member-only check at the server
 boundary as well as hiding their controls in the UI.
 
+Threshold recommendation actions are member-owned mutations. Applying a
+pending suggestion changes the watch only if its discount and minimum saving
+still match the values captured when the suggestion was created; otherwise the
+suggestion becomes stale and the newer watch settings win. Dismissing only
+resolves the suggestion. Neither action performs a marketplace request, and
+guests never receive recommendation records.
+
 Riftwatch does not treat a browser request as a distinct security principal:
 any request a browser can make can be reproduced by another HTTP client that has
 the same authenticated session. Server actions receive Next.js same-origin/CSRF
@@ -141,8 +148,9 @@ user. Saving feedback also marks that alert as read. A later answer replaces the
 earlier answer so each alert contributes only its latest outcome to aggregate
 validation.
 
-The Alerts page has an Inbox (active unread events) and History (read, archived,
-or expired events). Archiving dismisses only that alert event and leaves the
+The Alerts page has an Inbox (active unread events), Recommendations (pending
+price-aware threshold suggestions), and History (read, archived, or expired
+events). Archiving dismisses only that alert event and leaves the
 underlying watch active; restoring an archived event returns it to Inbox. The
 scanner does not re-alert an unchanged listing. It creates a new event when the
 same listing improves by at least €2 or 10%, reappears after 24 hours, or a

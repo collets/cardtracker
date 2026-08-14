@@ -7,6 +7,7 @@ import {
   expansions,
   invitations,
   scanRuns,
+  thresholdRecommendations,
   userPreferences,
   users,
   watches,
@@ -26,6 +27,8 @@ export const e2ePendingInviteEmail = "e2e-pending@riftwatch.test";
 export const e2eAcceptedInviteEmail = "e2e-accepted@riftwatch.test";
 const e2eAlertWatchId = "00000000-0000-4000-8000-000000000811";
 const e2eAlertId = "00000000-0000-4000-8000-000000000821";
+export const e2eThresholdRecommendationId =
+  "00000000-0000-4000-8000-000000000822";
 const e2eInvitationIds = [
   "00000000-0000-4000-8000-000000000831",
   "00000000-0000-4000-8000-000000000832",
@@ -91,6 +94,25 @@ export async function cleanE2eAdminWatch() {
           eq(watches.blueprintId, e2eWatchBlueprintId),
         ),
       );
+  });
+}
+
+/** Restore the recommendation scenario because Playwright retries do not rerun
+ * global setup. */
+export async function resetE2eThresholdRecommendation() {
+  await withDatabase(async (db) => {
+    await db
+      .update(watches)
+      .set({
+        discountPercent: 20,
+        minSavingsCents: 500,
+        updatedAt: new Date(),
+      })
+      .where(eq(watches.id, e2eAlertWatchId));
+    await db
+      .update(thresholdRecommendations)
+      .set({ status: "pending", resolvedAt: null })
+      .where(eq(thresholdRecommendations.id, e2eThresholdRecommendationId));
   });
 }
 
@@ -236,6 +258,16 @@ export async function seedE2eFixtures() {
       referencePriceCents: 2_000,
       discountBps: 5_000,
       confidence: "medium",
+    });
+    await db.insert(thresholdRecommendations).values({
+      id: e2eThresholdRecommendationId,
+      watchId: e2eAlertWatchId,
+      currentDiscountPercent: 20,
+      currentMinSavingsCents: 500,
+      proposedDiscountPercent: 20,
+      proposedMinSavingsCents: 200,
+      referencePriceCents: 2_000,
+      eligibleCount: 6,
     });
   });
 }

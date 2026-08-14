@@ -1,14 +1,15 @@
 import Link from "next/link";
-import { and, desc, eq, isNull } from "drizzle-orm";
-import { BellRing, Plus, RefreshCw, Trash2 } from "lucide-react";
-import { getDb } from "@/db";
+import { and, desc, eq } from "drizzle-orm";
 import {
-  alerts,
-  blueprints,
-  expansions,
-  watches,
-  watchMetrics,
-} from "@/db/schema";
+  BellRing,
+  ChevronRight,
+  Plus,
+  RefreshCw,
+  SlidersHorizontal,
+  Trash2,
+} from "lucide-react";
+import { getDb } from "@/db";
+import { blueprints, expansions, watches, watchMetrics } from "@/db/schema";
 import {
   removeWatchAction,
   scanAllWatchesAction,
@@ -21,7 +22,8 @@ import { CardArt } from "@/components/card-art";
 import { PageHeading } from "@/components/page-heading";
 import { ActionForm, ActionSubmitButton } from "@/components/action-feedback";
 import { requireUser } from "@/lib/auth/guards";
-import { formatEuro } from "@/lib/utils";
+import { getAttentionCounts } from "@/lib/attention/counts";
+import { cn, formatEuro } from "@/lib/utils";
 
 export default async function DashboardPage() {
   const user = await requireUser();
@@ -39,17 +41,7 @@ export default async function DashboardPage() {
     .where(and(eq(watches.userId, user.id), eq(watches.active, true)))
     .orderBy(desc(watches.createdAt));
 
-  const unreadDeals = await getDb()
-    .select({ id: alerts.id })
-    .from(alerts)
-    .innerJoin(watches, eq(watches.id, alerts.watchId))
-    .where(
-      and(
-        eq(watches.userId, user.id),
-        eq(alerts.state, "active"),
-        isNull(alerts.readAt),
-      ),
-    );
+  const attention = await getAttentionCounts(user.id);
 
   return (
     <>
@@ -78,17 +70,47 @@ export default async function DashboardPage() {
           </>
         }
       />
-      {unreadDeals.length ? (
-        <Link
-          href="/alerts"
-          className="mb-6 flex items-center justify-between rounded-2xl border border-emerald-300/20 bg-emerald-300/10 p-4 text-emerald-100"
+      {attention.total > 0 ? (
+        <section
+          aria-labelledby="attention-heading"
+          className="mb-6 rounded-2xl border border-cyan-300/20 bg-cyan-300/[0.06] p-4 sm:p-5"
         >
-          <span className="flex items-center gap-3">
-            <BellRing className="size-5" /> {unreadDeals.length} active deal
-            {unreadDeals.length === 1 ? "" : "s"} need attention
-          </span>
-          <span className="text-sm">Review alerts →</span>
-        </Link>
+          <div className="flex items-start gap-3">
+            <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-cyan-300/15 text-cyan-200">
+              <BellRing className="size-4.5" aria-hidden="true" />
+            </span>
+            <div>
+              <h2 id="attention-heading" className="font-medium text-cyan-50">
+                {attention.total} {attention.total === 1 ? "item" : "items"}{" "}
+                need your attention
+              </h2>
+              <p className="mt-1 text-xs leading-5 text-slate-400">
+                Deals may be time-sensitive; suggestions help calibrate a watch
+                before future scans.
+              </p>
+            </div>
+          </div>
+          <div className="mt-4 grid gap-2 sm:grid-cols-2">
+            <AttentionLink
+              href="/alerts"
+              icon={BellRing}
+              count={attention.unreadDeals}
+              singular="unread deal"
+              plural="unread deals"
+              emptyLabel="No unread deals"
+              tone="deal"
+            />
+            <AttentionLink
+              href="/alerts?view=recommendations"
+              icon={SlidersHorizontal}
+              count={attention.pendingRecommendations}
+              singular="watch suggestion"
+              plural="watch suggestions"
+              emptyLabel="No watch suggestions"
+              tone="recommendation"
+            />
+          </div>
+        </section>
       ) : null}
       {rows.length === 0 ? (
         <Card className="border-dashed">
@@ -189,6 +211,65 @@ export default async function DashboardPage() {
         </div>
       )}
     </>
+  );
+}
+
+function AttentionLink({
+  href,
+  icon: Icon,
+  count,
+  singular,
+  plural,
+  emptyLabel,
+  tone,
+}: {
+  href: string;
+  icon: typeof BellRing;
+  count: number;
+  singular: string;
+  plural: string;
+  emptyLabel: string;
+  tone: "deal" | "recommendation";
+}) {
+  const active = count > 0;
+  const content = (
+    <>
+      <Icon className="size-4 shrink-0" aria-hidden="true" />
+      <span className="min-w-0 flex-1 text-sm font-medium">
+        {active ? `${count} ${count === 1 ? singular : plural}` : emptyLabel}
+      </span>
+      {active ? (
+        <ChevronRight
+          className="size-4 shrink-0 transition-colors group-hover:text-white"
+          aria-hidden="true"
+        />
+      ) : null}
+    </>
+  );
+
+  if (!active) {
+    return (
+      <div className="flex min-h-12 items-center gap-3 rounded-xl border border-white/5 bg-black/10 px-3 py-2.5 text-slate-500">
+        {content}
+      </div>
+    );
+  }
+
+  return (
+    <Link
+      href={href}
+      className={cn(
+        "group flex min-h-12 cursor-pointer items-center gap-3 rounded-xl border px-3 py-2.5 transition-colors",
+        tone === "deal"
+          ? "border-emerald-300/20 bg-emerald-300/[0.07] text-emerald-100 hover:border-emerald-300/35 hover:bg-emerald-300/10"
+          : null,
+        tone === "recommendation"
+          ? "border-cyan-300/20 bg-cyan-300/[0.07] text-cyan-100 hover:border-cyan-300/35 hover:bg-cyan-300/10"
+          : null,
+      )}
+    >
+      {content}
+    </Link>
   );
 }
 

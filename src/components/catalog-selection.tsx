@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { CheckSquare2, Plus, X } from "lucide-react";
+import { Check, CheckSquare2, Plus, X } from "lucide-react";
 import { bulkAddWatchesAction, quickAddWatchAction } from "@/app/(app)/actions";
 import { ActionForm, ActionSubmitButton } from "@/components/action-feedback";
 import { Button } from "@/components/ui/button";
@@ -90,8 +90,10 @@ function subscribeToSelection(listener: () => void) {
 
 export function CatalogSelectionProvider({
   children,
+  watchedIds = [],
 }: {
   children: React.ReactNode;
+  watchedIds?: number[];
 }) {
   const selected = React.useSyncExternalStore(
     subscribeToSelection,
@@ -109,6 +111,13 @@ export function CatalogSelectionProvider({
     },
     [],
   );
+  React.useEffect(() => {
+    if (watchedIds.length === 0) return;
+    const watched = new Set(watchedIds);
+    updateSelection((current) =>
+      current.filter((card) => !watched.has(card.id)),
+    );
+  }, [updateSelection, watchedIds]);
   const value = React.useMemo<CatalogSelectionContextValue>(
     () => ({
       selectedCards: selected,
@@ -151,7 +160,13 @@ function useCatalogSelection() {
   return context;
 }
 
-export function CatalogCardActions({ card }: { card: CatalogSelectedCard }) {
+export function CatalogCardActions({
+  card,
+  watched = false,
+}: {
+  card: CatalogSelectedCard;
+  watched?: boolean;
+}) {
   const selection = useCatalogSelection();
   const checked = selection.isSelected(card.id);
 
@@ -160,21 +175,43 @@ export function CatalogCardActions({ card }: { card: CatalogSelectedCard }) {
       <div className="pointer-events-auto rounded-lg border border-white/15 bg-slate-950/90 p-2 shadow-lg backdrop-blur">
         <Checkbox
           checked={checked}
+          disabled={watched}
           onChange={() => selection.toggle(card)}
-          label={`Select ${card.name}, ${card.printing}`}
+          label={
+            watched
+              ? `${card.name}, ${card.printing}, already in watchlist`
+              : `Select ${card.name}, ${card.printing}`
+          }
           labelClassName="sr-only"
         />
       </div>
-      <ActionForm action={quickAddWatchAction} className="pointer-events-auto">
+      <ActionForm
+        action={quickAddWatchAction}
+        className="pointer-events-auto"
+        onSuccess={() => selection.clearMany([card.id])}
+      >
         <input type="hidden" name="blueprintId" value={card.id} />
         <ActionSubmitButton
           size="icon"
+          disabled={watched}
           className="size-9 border border-white/15 bg-slate-950/90 text-cyan-200 shadow-lg backdrop-blur hover:bg-cyan-300 hover:text-slate-950"
-          aria-label={`Add ${card.name} to watchlist with default options`}
-          title="Add to watchlist with default options"
+          aria-label={
+            watched
+              ? `${card.name} is already in your watchlist`
+              : `Add ${card.name} to watchlist with default options`
+          }
+          title={
+            watched
+              ? "Already in your watchlist"
+              : "Add to watchlist with default options"
+          }
           pendingLabel={<span className="sr-only">Adding…</span>}
         >
-          <Plus className="size-4" />
+          {watched ? (
+            <Check className="size-4" aria-hidden="true" />
+          ) : (
+            <Plus className="size-4" aria-hidden="true" />
+          )}
         </ActionSubmitButton>
       </ActionForm>
     </div>
