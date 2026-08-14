@@ -32,7 +32,7 @@ export function Checkbox({
           type="checkbox"
           disabled={disabled}
           className={cn(
-            "peer size-4 cursor-pointer appearance-none rounded border border-white/25 bg-slate-950/80 transition-[border-color,background-color,box-shadow] checked:border-cyan-300 checked:bg-cyan-300 hover:border-cyan-300/60 focus-visible:ring-2 focus-visible:ring-cyan-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 focus-visible:outline-none disabled:cursor-not-allowed",
+            "peer size-4 cursor-pointer appearance-none rounded border border-white/25 bg-slate-950/80 transition-[border-color,background-color,box-shadow] group-hover:border-cyan-300/60 group-hover:bg-cyan-300/10 group-hover:shadow-sm group-hover:shadow-cyan-300/15 checked:border-cyan-300 checked:bg-cyan-300 hover:border-cyan-300/60 focus-visible:ring-2 focus-visible:ring-cyan-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 focus-visible:outline-none disabled:cursor-not-allowed",
             className,
           )}
           {...props}

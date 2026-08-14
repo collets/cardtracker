@@ -33,6 +33,9 @@
       first operator backup remains a production rollout gate.
 - [x] Five-minute scanner cadence, overlap-safe leases, and an optional
       disabled Cloudflare Workers Free scheduler bridge with local validation.
+- [x] One-time price-aware threshold recommendations using existing scan data,
+      with in-app review, Telegram delivery, ownership checks, guest exclusion,
+      and optimistic apply/dismiss handling.
 - [ ] Hosted five-minute scheduler enablement and observation, deliberately
       deferred until the owner completes the operator runbook.
 

@@ -16,6 +16,7 @@ vi.mock("@/app/(app)/actions", () => ({
 }));
 
 import {
+  CatalogCardActions,
   CatalogPageSelection,
   CatalogSelectionProvider,
   type CatalogSelectedCard,
@@ -33,6 +34,45 @@ beforeEach(() => sessionStorage.clear());
 afterEach(cleanup);
 
 describe("catalog selection", () => {
+  it("disables selection and quick-add for a watched printing", () => {
+    render(
+      <CatalogSelectionProvider>
+        <CatalogCardActions card={firstPage[0]!} watched />
+      </CatalogSelectionProvider>,
+    );
+
+    expect(
+      screen.getByRole("checkbox", {
+        name: /Lux, Crownguard.*already in watchlist/,
+      }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", {
+        name: "Lux, Crownguard is already in your watchlist",
+      }),
+    ).toBeDisabled();
+  });
+
+  it("removes watched printings from a persisted cross-page selection", async () => {
+    sessionStorage.setItem(
+      "riftwatch:catalog-selection:v1",
+      JSON.stringify(firstPage),
+    );
+
+    render(
+      <CatalogSelectionProvider watchedIds={[firstPage[0]!.id]}>
+        <CatalogPageSelection cards={secondPage} />
+      </CatalogSelectionProvider>,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByText("1 selected across the catalog")).toBeVisible(),
+    );
+    expect(
+      JSON.parse(sessionStorage.getItem("riftwatch:catalog-selection:v1")!),
+    ).toEqual([firstPage[1]]);
+  });
+
   it("persists selected printings when the catalog page remounts", async () => {
     const first = render(
       <CatalogSelectionProvider>

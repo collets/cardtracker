@@ -10,6 +10,14 @@ invite allowlist, plus a Credentials provider that redeems limited-use guest
 links. PostgreSQL leases coordinate scan work without an external queue.
 Telegram sends notifications through a verified webhook and bot API.
 
+The scanner also derives one-time threshold recommendations from the normalized
+market evidence it already fetched, so calibration adds no CardTrader request.
+Recommendations share the idempotent notification outbox with deal alerts, but
+retain their own lifecycle and deep-link to a user-owned watch. Applying a
+recommendation is an optimistic transaction: it updates only the captured
+threshold version and otherwise resolves the stale suggestion without
+overwriting a user's newer manual settings.
+
 The scanner deduplicates active watches by CardTrader blueprint and evaluates
 each result against every interested user's filters. Multi-blueprint scans,
 including scheduled, administrative, and user watchlist refreshes, group

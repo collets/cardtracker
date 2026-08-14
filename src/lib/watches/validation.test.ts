@@ -24,6 +24,21 @@ describe("watch input", () => {
     ).toThrow();
   });
 
+  it("accepts cent-precise savings and rejects sub-cent values", () => {
+    expect(
+      watchInputSchema.parse({
+        blueprintId: 400528,
+        minSavingsEuros: 0.02,
+      }).minSavingsEuros,
+    ).toBe(0.02);
+    expect(() =>
+      watchInputSchema.parse({
+        blueprintId: 400528,
+        minSavingsEuros: 0.001,
+      }),
+    ).toThrow("fractions of a cent");
+  });
+
   it("applies one validated option set to every bulk-selected card", () => {
     const form = new FormData();
     form.append("blueprintIds", "101");

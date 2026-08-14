@@ -134,8 +134,9 @@ export function WatchOptionsFields({
             id={`${idPrefix}-saving`}
             name="minSavingsEuros"
             type="number"
+            inputMode="decimal"
             min="0"
-            step="0.5"
+            step="0.01"
             defaultValue={
               defaults.minSavingsEuros ?? DEFAULT_MIN_SAVINGS_CENTS / 100
             }

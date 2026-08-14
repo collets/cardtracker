@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import type { AttentionCounts } from "@/lib/attention/types";
 
 type NavigationItem = {
   href: string;
@@ -44,7 +45,15 @@ export function isNavigationHrefActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-function NavigationLink({ item }: { item: NavigationItem }) {
+function NavigationLink({
+  item,
+  count,
+  attentionLabel,
+}: {
+  item: NavigationItem;
+  count?: number;
+  attentionLabel?: string;
+}) {
   const pathname = usePathname();
   const active = isNavigationHrefActive(pathname, item.href);
   const Icon = item.icon;
@@ -62,16 +71,29 @@ function NavigationLink({ item }: { item: NavigationItem }) {
       <Link
         href={item.href}
         aria-label={item.label}
+        aria-description={attentionLabel}
+        title={attentionLabel}
         aria-current={active ? "page" : undefined}
       >
         <Icon className="size-4" aria-hidden="true" />
         <span className="hidden sm:inline">{item.label}</span>
+        {count ? (
+          <span className="ml-auto min-w-5 rounded-full bg-cyan-300 px-1.5 py-0.5 text-center text-[10px] leading-4 font-semibold text-slate-950">
+            {count > 99 ? "99+" : count}
+          </span>
+        ) : null}
       </Link>
     </Button>
   );
 }
 
-export function PrimaryNavigation({ role }: { role: "admin" | "user" }) {
+export function PrimaryNavigation({
+  role,
+  attention = { unreadDeals: 0, pendingRecommendations: 0, total: 0 },
+}: {
+  role: "admin" | "user";
+  attention?: AttentionCounts;
+}) {
   const items = role === "admin" ? [...primaryItems, adminItem] : primaryItems;
 
   return (
@@ -80,7 +102,16 @@ export function PrimaryNavigation({ role }: { role: "admin" | "user" }) {
       className="flex flex-1 items-center gap-1 overflow-auto lg:min-h-0 lg:flex-col lg:items-stretch"
     >
       {items.map((item) => (
-        <NavigationLink key={item.href} item={item} />
+        <NavigationLink
+          key={item.href}
+          item={item}
+          count={item.href === "/alerts" ? attention.total : undefined}
+          attentionLabel={
+            item.href === "/alerts" && attention.total > 0
+              ? `Alerts: ${attention.unreadDeals} unread ${attention.unreadDeals === 1 ? "deal" : "deals"}, ${attention.pendingRecommendations} pending ${attention.pendingRecommendations === 1 ? "recommendation" : "recommendations"}`
+              : undefined
+          }
+        />
       ))}
     </nav>
   );

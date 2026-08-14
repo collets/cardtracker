@@ -1,6 +1,17 @@
 import "server-only";
 import { createHash, randomBytes } from "node:crypto";
-import { and, asc, eq, gt, inArray, isNull, lt, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  eq,
+  gt,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  or,
+  sql,
+} from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "@/db";
 import {
@@ -9,6 +20,7 @@ import {
   notificationDeliveries,
   telegramChannels,
   telegramLinkTokens,
+  thresholdRecommendations,
   watches,
 } from "@/db/schema";
 import { buildAppUrl } from "@/lib/app-url";
@@ -131,11 +143,39 @@ export async function queueTelegramDelivery(
     .onConflictDoNothing();
 }
 
+export async function queueThresholdRecommendationDelivery(
+  recommendationId: string,
+) {
+  const [row] = await getDb()
+    .select({ channel: telegramChannels.chatId })
+    .from(thresholdRecommendations)
+    .innerJoin(watches, eq(watches.id, thresholdRecommendations.watchId))
+    .innerJoin(
+      telegramChannels,
+      and(
+        eq(telegramChannels.userId, watches.userId),
+        eq(telegramChannels.enabled, true),
+      ),
+    )
+    .where(eq(thresholdRecommendations.id, recommendationId))
+    .limit(1);
+  if (!row) return;
+
+  await getDb()
+    .insert(notificationDeliveries)
+    .values({
+      recommendationId,
+      channel: "telegram",
+      dedupeKey: `telegram:threshold-recommendation:${recommendationId}`,
+    })
+    .onConflictDoNothing();
+}
+
 async function sendTelegramMessage(
   chatId: string,
   text: string,
   fetchImpl: typeof fetch,
-  cardTraderUrl?: string,
+  action?: { text: string; url: string },
 ) {
   const token = requireEnv("TELEGRAM_BOT_TOKEN");
   const response = await fetchImpl(
@@ -147,12 +187,10 @@ async function sendTelegramMessage(
         chat_id: chatId,
         text,
         disable_web_page_preview: true,
-        ...(cardTraderUrl
+        ...(action
           ? {
               reply_markup: {
-                inline_keyboard: [
-                  [{ text: "Open CardTrader", url: cardTraderUrl }],
-                ],
+                inline_keyboard: [[action]],
               },
             }
           : {}),
@@ -175,14 +213,23 @@ export async function dispatchPendingNotifications(
     .select({
       delivery: notificationDeliveries,
       alert: alerts,
+      recommendation: thresholdRecommendations,
+      watchId: watches.id,
       blueprintId: blueprints.id,
       cardName: blueprints.name,
       cardVersion: blueprints.version,
       chatId: telegramChannels.chatId,
     })
     .from(notificationDeliveries)
-    .innerJoin(alerts, eq(alerts.id, notificationDeliveries.alertId))
-    .innerJoin(watches, eq(watches.id, alerts.watchId))
+    .leftJoin(alerts, eq(alerts.id, notificationDeliveries.alertId))
+    .leftJoin(
+      thresholdRecommendations,
+      eq(thresholdRecommendations.id, notificationDeliveries.recommendationId),
+    )
+    .innerJoin(
+      watches,
+      sql`${watches.id} = coalesce(${alerts.watchId}, ${thresholdRecommendations.watchId})`,
+    )
     .innerJoin(blueprints, eq(blueprints.id, watches.blueprintId))
     .innerJoin(telegramChannels, eq(telegramChannels.userId, watches.userId))
     .where(
@@ -190,6 +237,10 @@ export async function dispatchPendingNotifications(
         inArray(notificationDeliveries.status, ["pending", "failed"]),
         lt(notificationDeliveries.attempts, 3),
         eq(telegramChannels.enabled, true),
+        or(
+          isNotNull(alerts.id),
+          eq(thresholdRecommendations.status, "pending"),
+        ),
         options.deliveryIds?.length
           ? inArray(notificationDeliveries.id, options.deliveryIds)
           : undefined,
@@ -201,25 +252,40 @@ export async function dispatchPendingNotifications(
   let sent = 0;
   let failed = 0;
   for (const row of deliveries) {
-    const discount = (row.alert.discountBps / 100).toFixed(1);
     const title = row.cardVersion
       ? `${row.cardName} · ${row.cardVersion}`
       : row.cardName;
-    const text = [
-      `Riftwatch deal: ${title}`,
-      `${formatEuro(row.alert.candidatePriceCents)} vs ${formatEuro(row.alert.referencePriceCents)} reference`,
-      `${discount}% below market · ${row.alert.confidence} confidence`,
-      `Seller: ${row.alert.candidate.seller.username} (${row.alert.candidate.seller.countryCode ?? "unknown"})`,
-      `Listing ID: ${row.alert.productId}`,
-      buildAppUrl(env.NEXT_PUBLIC_APP_URL, "/alerts"),
-    ].join("\n");
+    const isRecommendation = row.recommendation !== null;
+    if (!row.alert && !row.recommendation) continue;
+    const text = isRecommendation
+      ? [
+          `Riftwatch suggestion: ${title}`,
+          `We found ${row.recommendation!.eligibleCount} comparable listings around a ${formatEuro(row.recommendation!.referencePriceCents)} reference price.`,
+          `Reduce the minimum saving from ${formatEuro(row.recommendation!.currentMinSavingsCents)} to ${formatEuro(row.recommendation!.proposedMinSavingsCents)} so the ${row.recommendation!.proposedDiscountPercent}% rule can work for this card.`,
+          "Review the suggestion before anything changes.",
+        ].join("\n")
+      : [
+          `Riftwatch deal: ${title}`,
+          `${formatEuro(row.alert!.candidatePriceCents)} vs ${formatEuro(row.alert!.referencePriceCents)} reference`,
+          `${(row.alert!.discountBps / 100).toFixed(1)}% below market · ${row.alert!.confidence} confidence`,
+          `Seller: ${row.alert!.candidate.seller.username} (${row.alert!.candidate.seller.countryCode ?? "unknown"})`,
+          `Listing ID: ${row.alert!.productId}`,
+          buildAppUrl(env.NEXT_PUBLIC_APP_URL, "/alerts"),
+        ].join("\n");
+    const action = isRecommendation
+      ? {
+          text: "Review suggestion",
+          url: buildAppUrl(
+            env.NEXT_PUBLIC_APP_URL,
+            `/watches/${row.watchId}?recommendation=${row.recommendation!.id}`,
+          ),
+        }
+      : {
+          text: "Open CardTrader",
+          url: getCardTraderBlueprintUrl(row.blueprintId),
+        };
     try {
-      await sendTelegramMessage(
-        row.chatId,
-        text,
-        fetchImpl,
-        getCardTraderBlueprintUrl(row.blueprintId),
-      );
+      await sendTelegramMessage(row.chatId, text, fetchImpl, action);
       await getDb()
         .update(notificationDeliveries)
         .set({

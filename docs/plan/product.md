@@ -14,6 +14,9 @@ an in-app and Telegram alert when a comparable listing is unusually cheap.
 - EU/EEA seller countries, configurable in user settings and per watch.
 - Foil or non-foil and CardTrader Zero optional.
 - A 20% relative discount and EUR 5 absolute saving, overridable per watch.
+- After the first sufficiently populated scan of a member's default watch,
+  Riftwatch can suggest a price-aware absolute saving when EUR 5 would be more
+  restrictive than the 20% rule. It never changes thresholds without consent.
 - 50 watches per user by default; an administrator can change the quota.
 
 Shipping cost and delivery estimates are not represented because CardTrader's
@@ -34,6 +37,13 @@ cart or purchases a product.
 - The watchlist can refresh every active watched printing in one user-scoped
   request. The scanner deduplicates those printings and applies its adaptive
   expansion batching without exposing administrator-wide scan access.
+- Pending threshold suggestions appear beside deal alerts and can be applied or
+  dismissed from a watch detail modal. The alternative action takes the user
+  directly to the watch filters for a manual choice. Linked members receive the
+  same one-time suggestion through Telegram; guest demonstrations do not.
+- The overview attention summary and Alerts navigation keep unread deals and
+  pending watch suggestions as separate counts, while the main navigation badge
+  shows their combined total.
 - Each alert can be rated in one tap as purchased, useful but skipped,
   unavailable, not a real deal, wrong details, or shipping too expensive. The
   latest answer is editable, marks the alert read, and feeds an administrator

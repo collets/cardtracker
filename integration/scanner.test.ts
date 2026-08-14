@@ -13,6 +13,7 @@ import {
   scanRuns,
   telegramChannels,
   telegramLinkTokens,
+  thresholdRecommendations,
   userPreferences,
   users,
   watches,
@@ -43,6 +44,12 @@ import {
   redeemGuestAccessToken,
   revokeGuestAccessLink,
 } from "@/lib/guests/service";
+import {
+  applyThresholdRecommendation,
+  dismissThresholdRecommendation,
+} from "@/lib/recommendations/service";
+import { updateWatch } from "@/lib/watches/service";
+import { watchInputSchema } from "@/lib/watches/validation";
 
 const expansionId = 990_001;
 const blueprintId = 990_001;
@@ -317,6 +324,168 @@ describe("scanner persistence", () => {
           ),
         ),
     ).resolves.toHaveLength(2);
+    const recommendations = await getDb()
+      .select()
+      .from(thresholdRecommendations)
+      .where(inArray(thresholdRecommendations.watchId, [...watchIds]));
+    expect(recommendations).toHaveLength(2);
+    expect(recommendations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          status: "pending",
+          currentDiscountPercent: 20,
+          currentMinSavingsCents: 500,
+          proposedDiscountPercent: 20,
+          proposedMinSavingsCents: 220,
+          referencePriceCents: 2_200,
+          eligibleCount: 6,
+        }),
+      ]),
+    );
+    await expect(
+      getDb()
+        .select()
+        .from(notificationDeliveries)
+        .where(
+          inArray(
+            notificationDeliveries.recommendationId,
+            recommendations.map((recommendation) => recommendation.id),
+          ),
+        ),
+    ).resolves.toHaveLength(2);
+  });
+
+  it("applies, dismisses, and invalidates threshold suggestions only for their owner", async () => {
+    await scanBlueprint(blueprintId, {
+      marketplaceProducts: vi.fn().mockResolvedValue(qualifyingListings),
+    });
+    const recommendations = await getDb()
+      .select()
+      .from(thresholdRecommendations)
+      .where(inArray(thresholdRecommendations.watchId, [...watchIds]));
+    const first = recommendations.find(
+      (recommendation) => recommendation.watchId === watchIds[0],
+    );
+    const second = recommendations.find(
+      (recommendation) => recommendation.watchId === watchIds[1],
+    );
+    if (!first || !second) throw new Error("Recommendation fixtures missing");
+
+    await expect(
+      applyThresholdRecommendation(userIds[1], first.id),
+    ).rejects.toThrow("Threshold suggestion not found");
+    await expect(
+      applyThresholdRecommendation(userIds[0], first.id),
+    ).resolves.toMatchObject({ id: watchIds[0] });
+    await expect(
+      getDb()
+        .select({
+          discountPercent: watches.discountPercent,
+          minSavingsCents: watches.minSavingsCents,
+        })
+        .from(watches)
+        .where(eq(watches.id, watchIds[0])),
+    ).resolves.toEqual([{ discountPercent: 20, minSavingsCents: 220 }]);
+
+    await expect(
+      dismissThresholdRecommendation(userIds[0], second.id),
+    ).rejects.toThrow("Threshold suggestion not found");
+    await expect(
+      dismissThresholdRecommendation(userIds[1], second.id),
+    ).resolves.toBeUndefined();
+    await expect(
+      getDb()
+        .select({ status: thresholdRecommendations.status })
+        .from(thresholdRecommendations)
+        .where(inArray(thresholdRecommendations.id, [first.id, second.id])),
+    ).resolves.toEqual(
+      expect.arrayContaining([{ status: "applied" }, { status: "dismissed" }]),
+    );
+  });
+
+  it("resolves concurrent apply attempts exactly once", async () => {
+    await scanBlueprint(blueprintId, {
+      marketplaceProducts: vi.fn().mockResolvedValue(qualifyingListings),
+    });
+    const [recommendation] = await getDb()
+      .select({ id: thresholdRecommendations.id })
+      .from(thresholdRecommendations)
+      .where(eq(thresholdRecommendations.watchId, watchIds[0]))
+      .limit(1);
+    if (!recommendation) throw new Error("Recommendation fixture missing");
+
+    const results = await Promise.allSettled([
+      applyThresholdRecommendation(userIds[0], recommendation.id),
+      applyThresholdRecommendation(userIds[0], recommendation.id),
+    ]);
+
+    expect(
+      results.filter((result) => result.status === "fulfilled"),
+    ).toHaveLength(1);
+    expect(
+      results.filter((result) => result.status === "rejected"),
+    ).toHaveLength(1);
+    await expect(
+      getDb()
+        .select({
+          discountPercent: watches.discountPercent,
+          minSavingsCents: watches.minSavingsCents,
+        })
+        .from(watches)
+        .where(eq(watches.id, watchIds[0])),
+    ).resolves.toEqual([{ discountPercent: 20, minSavingsCents: 220 }]);
+  });
+
+  it("marks a pending suggestion stale when its watch thresholds are edited", async () => {
+    await scanBlueprint(blueprintId, {
+      marketplaceProducts: vi.fn().mockResolvedValue(qualifyingListings),
+    });
+    const [recommendation] = await getDb()
+      .select()
+      .from(thresholdRecommendations)
+      .where(eq(thresholdRecommendations.watchId, watchIds[0]))
+      .limit(1);
+    if (!recommendation) throw new Error("Recommendation fixture missing");
+
+    await updateWatch(
+      userIds[0],
+      watchIds[0],
+      watchInputSchema.parse({
+        blueprintId,
+        languages: ["en"],
+        conditions: ["Near Mint"],
+        sellerCountries: ["IT"],
+        discountPercent: 25,
+      }),
+    );
+
+    await expect(
+      getDb()
+        .select({ status: thresholdRecommendations.status })
+        .from(thresholdRecommendations)
+        .where(eq(thresholdRecommendations.id, recommendation.id)),
+    ).resolves.toEqual([{ status: "stale" }]);
+    await expect(
+      applyThresholdRecommendation(userIds[0], recommendation.id),
+    ).rejects.toThrow("Threshold suggestion not found");
+  });
+
+  it("does not create threshold suggestions for guest watches", async () => {
+    await getDb()
+      .update(users)
+      .set({ kind: "guest" })
+      .where(eq(users.id, userIds[1]));
+
+    await scanBlueprint(blueprintId, {
+      marketplaceProducts: vi.fn().mockResolvedValue(qualifyingListings),
+    });
+
+    await expect(
+      getDb()
+        .select({ watchId: thresholdRecommendations.watchId })
+        .from(thresholdRecommendations)
+        .where(inArray(thresholdRecommendations.watchId, [...watchIds])),
+    ).resolves.toEqual([{ watchId: watchIds[0] }]);
   });
 
   it("fetches five claimed blueprints through one expansion request", async () => {
@@ -827,6 +996,49 @@ describe("scanner persistence", () => {
         .from(priceObservations)
         .where(inArray(priceObservations.watchId, [...watchIds])),
     ).resolves.toHaveLength(0);
+  });
+
+  it("delivers a threshold recommendation with a scoped Riftwatch deep link", async () => {
+    await scanBlueprint(blueprintId, {
+      marketplaceProducts: vi.fn().mockResolvedValue(qualifyingListings),
+    });
+    const recommendations = await getDb()
+      .select({ id: thresholdRecommendations.id })
+      .from(thresholdRecommendations)
+      .where(inArray(thresholdRecommendations.watchId, [...watchIds]));
+    const deliveries = await getDb()
+      .select({ id: notificationDeliveries.id })
+      .from(notificationDeliveries)
+      .where(
+        inArray(
+          notificationDeliveries.recommendationId,
+          recommendations.map((recommendation) => recommendation.id),
+        ),
+      );
+    const telegramFetch = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+
+    await expect(
+      dispatchPendingNotifications(telegramFetch, {
+        deliveryIds: deliveries.map((delivery) => delivery.id),
+      }),
+    ).resolves.toEqual({ sent: 2, failed: 0 });
+    expect(telegramFetch).toHaveBeenCalledTimes(2);
+    for (const [, request] of telegramFetch.mock.calls) {
+      const body = JSON.parse(String(request?.body)) as {
+        text: string;
+        reply_markup?: {
+          inline_keyboard?: Array<Array<{ text: string; url: string }>>;
+        };
+      };
+      expect(body.text).toContain("Riftwatch suggestion: Integration Card");
+      const action = body.reply_markup?.inline_keyboard?.[0]?.[0];
+      expect(action?.text).toBe("Review suggestion");
+      expect(action?.url).toMatch(
+        /^http:\/\/127\.0\.0\.1:3000\/watches\/[0-9a-f-]+\?recommendation=[0-9a-f-]+$/,
+      );
+    }
   });
 
   it("stores one editable feedback outcome only for the alert owner", async () => {

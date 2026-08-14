@@ -99,6 +99,32 @@ describe("bulk watch persistence", () => {
     ).resolves.toHaveLength(0);
   });
 
+  it("rejects a watch that the same user already owns", async () => {
+    const input = watchInputSchema.parse({ blueprintId: blueprintIds[0] });
+    await createWatches(userId, [input]);
+
+    await expect(createWatches(userId, [input])).rejects.toThrow(
+      "already in your watchlist",
+    );
+    await expect(
+      getDb().select().from(watches).where(eq(watches.userId, userId)),
+    ).resolves.toHaveLength(1);
+  });
+
+  it("rolls back a mixed selection containing an existing watch", async () => {
+    const inputs = blueprintIds.map((blueprintId) =>
+      watchInputSchema.parse({ blueprintId }),
+    );
+    await createWatches(userId, [inputs[0]!]);
+
+    await expect(createWatches(userId, inputs)).rejects.toThrow(
+      "selected cards are already in your watchlist",
+    );
+    await expect(
+      getDb().select().from(watches).where(eq(watches.userId, userId)),
+    ).resolves.toHaveLength(1);
+  });
+
   it("updates filters without allowing the watched blueprint to change", async () => {
     const [created] = await createWatches(userId, [
       watchInputSchema.parse({ blueprintId: blueprintIds[0] }),

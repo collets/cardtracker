@@ -21,21 +21,23 @@ database work, local integrations, testing, and troubleshooting.
 
 ## Local architecture
 
-| Component       | Local implementation                               | Lifecycle                                   |
-| --------------- | -------------------------------------------------- | ------------------------------------------- |
-| Web UI and APIs | Next.js 16 App Router at `localhost:3000`          | Started by `pnpm dev`                       |
-| Bundler         | Turbopack                                          | Owned by Next.js; webpack is not configured |
-| Styles          | Tailwind CSS 4 CLI output in `src/app/globals.css` | Compiled before dev/build                   |
-| Database        | PostgreSQL 17 Alpine at `localhost:5432`           | Docker Compose service `postgres`           |
-| ORM/migrations  | Drizzle ORM and SQL files in `drizzle/`            | Applied on setup and dev startup            |
-| Authentication  | Auth.js; development credentials provider locally  | Runs in Next.js                             |
-| Card data       | CardTrader API v2                                  | External; server-only token required        |
-| Scheduling      | Manual local cron commands                         | Vercel Cron in production                   |
-| Notifications   | Telegram Bot API and webhook                       | Optional external integration               |
+| Component       | Local implementation                               | Lifecycle                                      |
+| --------------- | -------------------------------------------------- | ---------------------------------------------- |
+| Web UI and APIs | Next.js 16 App Router at `localhost:3000`          | Started by `pnpm dev`                          |
+| Bundler         | Turbopack                                          | Owned by Next.js; webpack is not configured    |
+| Styles          | Tailwind CSS 4 CLI output in `src/app/globals.css` | Watched during development; compiled for build |
+| Database        | PostgreSQL 17 Alpine at `localhost:5432`           | Docker Compose service `postgres`              |
+| ORM/migrations  | Drizzle ORM and SQL files in `drizzle/`            | Applied on setup and dev startup               |
+| Authentication  | Auth.js; development credentials provider locally  | Runs in Next.js                                |
+| Card data       | CardTrader API v2                                  | External; server-only token required           |
+| Scheduling      | Manual local cron commands                         | Vercel Cron in production                      |
+| Notifications   | Telegram Bot API and webhook                       | Optional external integration                  |
 
 `pnpm dev` starts or reuses PostgreSQL, waits for health, applies migrations,
-seeds the configured administrator, and then starts Next.js. Stopping the dev
-server does not stop PostgreSQL or delete its data.
+seeds the configured administrator, and then starts Next.js with the Tailwind
+CLI watcher. Changes to Tailwind utility classes update `src/app/globals.css`
+automatically; no separate CSS build or server restart is needed. Stopping the
+dev server does not stop PostgreSQL or delete its data.
 When the development authentication provider is enabled, its startup banner
 prints the configured login email, the sign-in URL, and that no password is
 required. It never prints `AUTH_SECRET` or integration credentials.
@@ -126,19 +128,19 @@ pnpm local:down
 
 ### Stack lifecycle
 
-| Command                     | Behavior                                                                      |
-| --------------------------- | ----------------------------------------------------------------------------- |
-| `pnpm dev`                  | Full developer entry point: prerequisites, env, DB, migrations, seed, Next.js |
-| `pnpm dev:app`              | Next.js only; intended for CI or when infrastructure is managed separately    |
-| `pnpm local:setup`          | First-run/bootstrap operation without keeping Next.js running                 |
-| `pnpm local:doctor`         | Validate prerequisites, env, Docker, DB, and HTTP health                      |
-| `pnpm local:up`             | Start only PostgreSQL and wait until healthy                                  |
-| `pnpm local:down`           | Stop and remove containers/network; preserve the named volume                 |
-| `pnpm local:restart`        | Restart PostgreSQL without changing its data                                  |
-| `pnpm local:status`         | Show Compose status, DB readiness, and `/api/health` status                   |
-| `pnpm local:logs`           | Follow PostgreSQL logs; exit with Ctrl+C                                      |
-| `pnpm local:reset`          | Delete the DB volume and rebuild; requires typing `reset`                     |
-| `pnpm local:reset -- --yes` | Non-interactive destructive reset for disposable environments                 |
+| Command                     | Behavior                                                                                        |
+| --------------------------- | ----------------------------------------------------------------------------------------------- |
+| `pnpm dev`                  | Full developer entry point: prerequisites, env, DB, migrations, seed, Next.js                   |
+| `pnpm dev:app`              | Next.js plus the Tailwind watcher; intended for CI or when infrastructure is managed separately |
+| `pnpm local:setup`          | First-run/bootstrap operation without keeping Next.js running                                   |
+| `pnpm local:doctor`         | Validate prerequisites, env, Docker, DB, and HTTP health                                        |
+| `pnpm local:up`             | Start only PostgreSQL and wait until healthy                                                    |
+| `pnpm local:down`           | Stop and remove containers/network; preserve the named volume                                   |
+| `pnpm local:restart`        | Restart PostgreSQL without changing its data                                                    |
+| `pnpm local:status`         | Show Compose status, DB readiness, and `/api/health` status                                     |
+| `pnpm local:logs`           | Follow PostgreSQL logs; exit with Ctrl+C                                                        |
+| `pnpm local:reset`          | Delete the DB volume and rebuild; requires typing `reset`                                       |
+| `pnpm local:reset -- --yes` | Non-interactive destructive reset for disposable environments                                   |
 
 ### Data and integrations
 

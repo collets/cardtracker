@@ -10,7 +10,7 @@
   "scripts": {
     "css:build": "tailwindcss -i src/styles/tailwind.css -o src/app/globals.css --minify",
     "dev": "node scripts/local.mjs dev",
-    "dev:app": "pnpm css:build && next dev",
+    "dev:app": "node scripts/dev-app.mjs",
     "build": "node scripts/build.mjs",
     "start": "next start",
     "local:setup": "node scripts/local.mjs setup",

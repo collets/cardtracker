@@ -36,6 +36,13 @@
       "when": 1786612812815,
       "tag": "0004_material_inertia",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1786634964885,
+      "tag": "0005_small_captain_universe",
+      "breakpoints": true
     }
   ]
 }

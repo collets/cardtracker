@@ -1,7 +1,22 @@
 import "server-only";
-import { and, count, countDistinct, eq, inArray, sql } from "drizzle-orm";
+import {
+  and,
+  count,
+  countDistinct,
+  eq,
+  inArray,
+  ne,
+  or,
+  sql,
+} from "drizzle-orm";
 import { getDb } from "@/db";
-import { blueprints, blueprintScanState, users, watches } from "@/db/schema";
+import {
+  blueprints,
+  blueprintScanState,
+  thresholdRecommendations,
+  users,
+  watches,
+} from "@/db/schema";
 import { getServerEnv } from "@/lib/env";
 import { UserFacingError } from "@/lib/errors";
 import type { z } from "zod";
@@ -54,6 +69,7 @@ export async function createWatches(userId: string, inputs: WatchInput[]) {
       currentWatchCountRows,
       uniqueBlueprintCountRows,
       alreadyWatched,
+      userAlreadyWatched,
     ] = await Promise.all([
       tx
         .select({ quota: users.watchQuota })
@@ -87,12 +103,29 @@ export async function createWatches(userId: string, inputs: WatchInput[]) {
           ),
         )
         .groupBy(watches.blueprintId),
+      tx
+        .select({ blueprintId: watches.blueprintId })
+        .from(watches)
+        .where(
+          and(
+            eq(watches.userId, userId),
+            inArray(watches.blueprintId, blueprintIds),
+            eq(watches.active, true),
+          ),
+        ),
     ]);
 
     const quota = userRows[0]?.quota ?? env.DEFAULT_WATCH_QUOTA;
     if (blueprintRows.length !== blueprintIds.length) {
       throw new UserFacingError(
         "One or more selected Riftbound cards are no longer available",
+      );
+    }
+    if (userAlreadyWatched.length > 0) {
+      throw new UserFacingError(
+        userAlreadyWatched.length === 1 && inputs.length === 1
+          ? "This card is already in your watchlist"
+          : "One or more selected cards are already in your watchlist",
       );
     }
     const currentWatchCount = currentWatchCountRows[0]?.value ?? 0;
@@ -157,18 +190,40 @@ export async function updateWatch(
   watchId: string,
   input: WatchInput,
 ) {
-  const [updated] = await getDb()
-    .update(watches)
-    .set({
-      ...watchFilterValues(input),
-      updatedAt: new Date(),
-    })
-    .where(and(eq(watches.id, watchId), eq(watches.userId, userId)))
-    .returning();
-  if (!updated) throw new UserFacingError("Watch not found");
-  await getDb()
-    .update(blueprintScanState)
-    .set({ nextScanAt: new Date() })
-    .where(eq(blueprintScanState.blueprintId, updated.blueprintId));
-  return updated;
+  return getDb().transaction(async (tx) => {
+    const [updated] = await tx
+      .update(watches)
+      .set({
+        ...watchFilterValues(input),
+        updatedAt: new Date(),
+      })
+      .where(and(eq(watches.id, watchId), eq(watches.userId, userId)))
+      .returning();
+    if (!updated) throw new UserFacingError("Watch not found");
+
+    await tx
+      .update(thresholdRecommendations)
+      .set({ status: "stale", resolvedAt: new Date() })
+      .where(
+        and(
+          eq(thresholdRecommendations.watchId, watchId),
+          eq(thresholdRecommendations.status, "pending"),
+          or(
+            ne(
+              thresholdRecommendations.currentDiscountPercent,
+              input.discountPercent,
+            ),
+            ne(
+              thresholdRecommendations.currentMinSavingsCents,
+              Math.round(input.minSavingsEuros * 100),
+            ),
+          ),
+        ),
+      );
+    await tx
+      .update(blueprintScanState)
+      .set({ nextScanAt: new Date() })
+      .where(eq(blueprintScanState.blueprintId, updated.blueprintId));
+    return updated;
+  });
 }

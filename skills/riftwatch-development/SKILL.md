@@ -76,6 +76,10 @@ Work from the repository root and preserve unrelated developer changes.
 - Never persist full marketplace responses when normalized evidence suffices.
 - Keep scanner leases, idempotent notifications, alert evidence snapshots, and
   two-miss expiry behavior intact unless the product decision changes.
+- Keep threshold calibration derived from existing scan evidence: one
+  recommendation per member watch, none for guests, no automatic threshold
+  mutation, no overwrite after a manual threshold edit, and cent precision for
+  low-value cards.
 
 ## Verify proportionally
 

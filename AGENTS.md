@@ -30,7 +30,8 @@ that matches the task:
 
 - `pnpm dev` owns the normal local workflow: prerequisites, PostgreSQL, migrate,
   seed, and Next.js.
-- `pnpm dev:app` starts only Next.js and is intended for CI or controlled use.
+- `pnpm dev:app` starts Next.js and the Tailwind watcher; it is intended for CI
+  or controlled use.
 - `pnpm local:doctor` diagnoses environment and service health.
 - `pnpm check` is the minimum code-change verification.
 - `pnpm test:coverage` measures the fast Vitest suite; it does not replace

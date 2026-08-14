@@ -15,6 +15,10 @@ import {
 import { requireMemberUser, requireUser } from "@/lib/auth/guards";
 import { UserFacingError } from "@/lib/errors";
 import { runMarketScanner, scanUserWatchlist } from "@/lib/scanner/service";
+import {
+  applyThresholdRecommendation,
+  dismissThresholdRecommendation,
+} from "@/lib/recommendations/service";
 import { createTelegramLink, disconnectTelegram } from "@/lib/telegram/service";
 import {
   createWatch,
@@ -44,6 +48,7 @@ const preferencesSchema = z.object({
 
 const watchIdSchema = z.uuid("Invalid watch identifier");
 const alertIdSchema = z.uuid("Invalid alert identifier");
+const recommendationIdSchema = z.uuid("Invalid recommendation identifier");
 const alertFeedbackOutcomeSchema = z.enum(ALERT_FEEDBACK_OUTCOMES, {
   error: "Choose a valid feedback option",
 });
@@ -80,6 +85,41 @@ export async function updateWatchAction(formData: FormData) {
     },
     "Watch filters saved",
     "The watch filters could not be saved. Please retry.",
+  );
+}
+
+export async function applyThresholdRecommendationAction(formData: FormData) {
+  const user = await requireMemberUser();
+  return actionResult(
+    async () => {
+      const recommendationId = recommendationIdSchema.parse(
+        formData.get("recommendationId"),
+      );
+      const updated = await applyThresholdRecommendation(
+        user.id,
+        recommendationId,
+      );
+      revalidatePath(`/watches/${updated.id}`);
+      revalidatePath("/dashboard");
+      revalidatePath("/alerts");
+    },
+    "Suggested thresholds applied",
+    "The threshold suggestion could not be applied. Please retry.",
+  );
+}
+
+export async function dismissThresholdRecommendationAction(formData: FormData) {
+  const user = await requireMemberUser();
+  return actionResult(
+    async () => {
+      const recommendationId = recommendationIdSchema.parse(
+        formData.get("recommendationId"),
+      );
+      await dismissThresholdRecommendation(user.id, recommendationId);
+      revalidatePath("/alerts");
+    },
+    "Suggestion dismissed; adjust the watch whenever you are ready",
+    "The threshold suggestion could not be dismissed. Please retry.",
   );
 }
 
@@ -247,6 +287,7 @@ export async function quickAddWatchAction(formData: FormData) {
       if (preferences?.requireZero) defaults.set("requireZero", "on");
       await createWatch(user.id, watchInputFromForm(defaults));
       revalidatePath("/dashboard");
+      revalidatePath("/cards");
       return blueprintId;
     },
     "Card added to your watchlist",
@@ -261,6 +302,7 @@ export async function bulkAddWatchesAction(formData: FormData) {
       const inputs = watchInputsFromBulkForm(formData);
       const created = await createWatches(user.id, inputs);
       revalidatePath("/dashboard");
+      revalidatePath("/cards");
       return { createdCount: created.length };
     },
     ({ createdCount }) =>

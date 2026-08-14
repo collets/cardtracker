@@ -4,9 +4,11 @@ import {
   e2eAdminEmail,
   e2eAlertBlueprintId,
   e2ePendingInviteEmail,
+  e2eThresholdRecommendationId,
   e2eUserEmail,
   e2eWatchBlueprintId,
   cleanE2eAdminWatch,
+  resetE2eThresholdRecommendation,
 } from "./database";
 
 async function signIn(page: Page, email: string) {
@@ -126,6 +128,58 @@ test.describe.serial("authenticated MVP", () => {
     await expect(page.getByRole("button", { name: "Mark read" })).toBeVisible();
   });
 
+  test("user can review and apply a price-aware threshold suggestion", async ({
+    page,
+  }) => {
+    await resetE2eThresholdRecommendation();
+    await signIn(page, e2eUserEmail);
+    await expect(
+      page.getByRole("heading", { name: "2 items need your attention" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: "1 unread deal" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: "1 watch suggestion" }),
+    ).toBeVisible();
+    await page.goto("/alerts?view=recommendations");
+    await expect(
+      page.getByRole("link", { name: /Recommendations 1/ }),
+    ).toBeVisible();
+    await expect(page.getByText("E2E Alert Card")).toBeVisible();
+    await expect(page.getByText("€5.00")).toBeVisible();
+    await expect(page.getByText("€2.00")).toBeVisible();
+
+    await page.getByRole("link", { name: "Review" }).click();
+    await expect(page).toHaveURL(
+      new RegExp(`recommendation=${e2eThresholdRecommendationId}`),
+    );
+    await expect(
+      page.getByRole("heading", { name: "Use price-aware thresholds?" }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Apply suggestion" }).click();
+    await expect(
+      page
+        .getByRole("status")
+        .filter({ hasText: "Suggested thresholds applied" }),
+    ).toBeVisible();
+    await page.reload();
+    await expect(page.getByLabel("Minimum saving (EUR)")).toHaveValue("2");
+    await expect(page.getByLabel("Minimum saving (EUR)")).toHaveAttribute(
+      "step",
+      "0.01",
+    );
+    await expect(page.getByRole("link", { name: "Alerts" })).toHaveAttribute(
+      "aria-description",
+      "Alerts: 1 unread deal, 0 pending recommendations",
+    );
+
+    await page.goto("/alerts?view=recommendations");
+    await expect(
+      page.getByText("No threshold suggestions right now"),
+    ).toBeVisible();
+  });
+
   test("admin can quick-add and bulk-add catalog printings", async ({
     page,
   }) => {
@@ -142,6 +196,24 @@ test.describe.serial("authenticated MVP", () => {
         .getByRole("status")
         .filter({ hasText: "Card added to your watchlist" }),
     ).toBeVisible();
+    await expect(
+      page.getByRole("button", {
+        name: "E2E Watch Card is already in your watchlist",
+      }),
+    ).toBeDisabled();
+    await expect(
+      page.getByRole("checkbox", {
+        name: /E2E Watch Card.*already in watchlist/,
+      }),
+    ).toBeDisabled();
+
+    await page.goto(`/cards/${e2eWatchBlueprintId}`);
+    await expect(
+      page.getByRole("button", { name: "Already watching" }),
+    ).toBeDisabled();
+    await expect(
+      page.getByRole("link", { name: "Review watch" }),
+    ).toHaveAttribute("href", /\/watches\//);
 
     await page.goto("/dashboard");
     await expect(page.getByText("E2E Watch Card")).toBeVisible();
