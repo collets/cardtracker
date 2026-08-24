@@ -4,6 +4,7 @@ import {
   createTelegramLinkAction,
   disconnectTelegramAction,
   savePreferencesAction,
+  saveTelegramDiagnosticsAction,
 } from "@/app/(app)/actions";
 import { getDb } from "@/db";
 import { telegramChannels, userPreferences, users } from "@/db/schema";
@@ -160,7 +161,7 @@ export default async function AccountPage() {
                 expires automatically after one hour.
               </div>
             ) : telegram ? (
-              <div>
+              <div className="space-y-5">
                 <p className="text-sm text-slate-300">
                   Linked to{" "}
                   {telegram.username
@@ -168,7 +169,31 @@ export default async function AccountPage() {
                     : `chat ${telegram.chatId}`}
                   .
                 </p>
-                <ActionForm action={disconnectTelegramAction} className="mt-5">
+                {sessionUser.role === "admin" ? (
+                  <ActionForm
+                    action={saveTelegramDiagnosticsAction}
+                    className="space-y-3 rounded-xl border border-amber-300/20 bg-amber-300/[0.04] p-4"
+                  >
+                    <Checkbox
+                      name="diagnosticsEnabled"
+                      label="Scheduled scan diagnostics"
+                      defaultChecked={telegram.diagnosticsEnabled}
+                    />
+                    <p className="text-xs leading-5 text-slate-400">
+                      Send one compact Telegram heartbeat after every scheduled
+                      scan, including zero-work runs. At a five-minute cadence
+                      this is intentionally noisy; manual scans stay quiet.
+                    </p>
+                    <ActionSubmitButton
+                      size="sm"
+                      variant="outline"
+                      pendingLabel="Saving…"
+                    >
+                      Save diagnostics
+                    </ActionSubmitButton>
+                  </ActionForm>
+                ) : null}
+                <ActionForm action={disconnectTelegramAction}>
                   <ActionSubmitButton
                     variant="outline"
                     pendingLabel="Disconnecting…"

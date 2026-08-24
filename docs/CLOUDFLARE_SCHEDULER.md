@@ -135,8 +135,12 @@ automated by CI.
 
 7. Observe the first hour in both Cloudflare and Vercel. Confirm a request about
    every five minutes, no 401 responses, no overlapping duplicate claims, and
-   no CardTrader pacing or function-duration errors. Then complete the first
-   day and first week checks in the production rollout.
+   no CardTrader pacing or function-duration errors. For an additional
+   end-to-end signal, temporarily enable `Diag` for one Telegram-linked member
+   in Admin → Users; that member receives a compact message after every completed
+   cron scan, including zero-work runs. Disable the toggle after the observation
+   window. Then complete the first day and first week checks in the production
+   rollout.
 
 ## Disable and rollback
 

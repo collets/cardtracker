@@ -488,6 +488,7 @@ export const telegramChannels = pgTable("telegram_channels", {
   chatId: text("chat_id").notNull().unique(),
   username: text("username"),
   enabled: boolean("enabled").notNull().default(true),
+  diagnosticsEnabled: boolean("diagnostics_enabled").notNull().default(false),
   linkedAt: timestamp("linked_at", { mode: "date", withTimezone: true })
     .notNull()
     .defaultNow(),

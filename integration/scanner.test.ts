@@ -37,6 +37,7 @@ import {
 import {
   createTelegramLink,
   dispatchPendingNotifications,
+  dispatchScheduledScanDiagnostics,
   handleTelegramUpdate,
 } from "@/lib/telegram/service";
 import {
@@ -200,6 +201,7 @@ async function seedFixtures() {
       userIds.map((userId, index) => ({
         userId,
         chatId: `integration-chat-${index}`,
+        diagnosticsEnabled: true,
       })),
     );
 }
@@ -554,6 +556,7 @@ describe("scanner persistence", () => {
         watches: 6,
         alerts: 6,
         marketplaceFetches: { expansions: 1, blueprints: 0 },
+        notifications: { sent: 0, failed: 0 },
       });
       expect(marketplaceProductsForExpansion).toHaveBeenCalledOnce();
       expect(marketplaceProducts).not.toHaveBeenCalled();
@@ -996,6 +999,63 @@ describe("scanner persistence", () => {
         .from(priceObservations)
         .where(inArray(priceObservations.watchId, [...watchIds])),
     ).resolves.toHaveLength(0);
+  });
+
+  it("sends scheduled scan diagnostics to opted-in enabled linked users", async () => {
+    const telegramFetch = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response("{}", { status: 500 }))
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+
+    await expect(
+      dispatchScheduledScanDiagnostics(
+        {
+          claimed: 0,
+          successes: 0,
+          failures: 0,
+          watches: 0,
+          alerts: 0,
+          notifications: { sent: 0, failed: 0 },
+        },
+        telegramFetch,
+      ),
+    ).resolves.toEqual({ sent: 1, failed: 1 });
+    expect(telegramFetch).toHaveBeenCalledTimes(2);
+    const [, request] = telegramFetch.mock.calls[0] ?? [];
+    const body = JSON.parse(String(request?.body)) as {
+      chat_id?: string;
+      text?: string;
+    };
+    expect(["integration-chat-0", "integration-chat-1"]).toContain(
+      body.chat_id,
+    );
+    expect(body.text).toContain(
+      "Riftwatch diagnostic · scheduled scan completed",
+    );
+    expect(body.text).toContain("Claimed 0");
+
+    await getDb()
+      .update(users)
+      .set({ disabled: true })
+      .where(eq(users.id, userIds[0]));
+    await getDb()
+      .update(telegramChannels)
+      .set({ diagnosticsEnabled: false })
+      .where(eq(telegramChannels.userId, userIds[1]));
+    await expect(
+      dispatchScheduledScanDiagnostics(
+        {
+          claimed: 1,
+          successes: 1,
+          failures: 0,
+          watches: 2,
+          alerts: 1,
+          notifications: { sent: 1, failed: 0 },
+        },
+        telegramFetch,
+      ),
+    ).resolves.toEqual({ sent: 0, failed: 0 });
+    expect(telegramFetch).toHaveBeenCalledTimes(2);
   });
 
   it("delivers a threshold recommendation with a scoped Riftwatch deep link", async () => {

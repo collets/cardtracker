@@ -495,7 +495,9 @@ export async function runMarketScanner(
     })
     .where(eq(scanRuns.id, run.id));
 
-  await (options.dispatchNotifications ?? dispatchPendingNotifications)();
+  const notifications = await (
+    options.dispatchNotifications ?? dispatchPendingNotifications
+  )();
   return {
     claimed: blueprintIds.length,
     successes,
@@ -506,6 +508,7 @@ export async function runMarketScanner(
       expansions: expansionFetches,
       blueprints: blueprintFetches,
     },
+    notifications,
   };
 }
 

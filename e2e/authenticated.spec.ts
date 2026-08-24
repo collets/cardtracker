@@ -80,6 +80,29 @@ test.describe.serial("authenticated MVP", () => {
     await expect(page.getByText(e2eAcceptedInviteEmail)).toBeVisible();
   });
 
+  test("admin can enable scheduled diagnostics for a linked user", async ({
+    page,
+  }) => {
+    await signIn(page, e2eAdminEmail);
+    await page.goto("/admin");
+
+    const diagnostics = page.getByRole("checkbox", {
+      name: `Scheduled scan diagnostics for ${e2eUserEmail}`,
+    });
+    await expect(diagnostics).not.toBeChecked();
+    await diagnostics.check();
+    await diagnostics
+      .locator("xpath=ancestor::form")
+      .getByRole("button", {
+        name: "Save",
+      })
+      .click();
+    await expect(
+      page.getByRole("status").filter({ hasText: "User settings saved" }),
+    ).toBeVisible();
+    await expect(diagnostics).toBeChecked();
+  });
+
   test("normal user cannot access admin, rate, archive, and restore an alert", async ({
     page,
   }) => {
@@ -279,6 +302,16 @@ test.describe.serial("authenticated MVP", () => {
       "aria-current",
       "page",
     );
+    await expect(
+      page.getByRole("checkbox", { name: "Scheduled scan diagnostics" }),
+    ).not.toBeChecked();
+    await page
+      .getByRole("checkbox", { name: "Scheduled scan diagnostics" })
+      .check();
+    await page.getByRole("button", { name: "Save diagnostics" }).click();
+    await expect(
+      page.getByRole("checkbox", { name: "Scheduled scan diagnostics" }),
+    ).toBeChecked();
     await page.getByRole("checkbox", { name: "French" }).check();
     await page.getByRole("button", { name: "Save defaults" }).click();
     await expect(page.getByRole("checkbox", { name: "French" })).toBeChecked();

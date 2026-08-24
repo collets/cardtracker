@@ -36,6 +36,8 @@
 - [x] One-time price-aware threshold recommendations using existing scan data,
       with in-app review, Telegram delivery, ownership checks, guest exclusion,
       and optimistic apply/dismiss handling.
+- [x] Opt-in scheduled-scan Telegram diagnostics for administrators and selected
+      linked members, including zero-work runs and per-user admin controls.
 - [ ] Hosted five-minute scheduler enablement and observation, deliberately
       deferred until the owner completes the operator runbook.
 

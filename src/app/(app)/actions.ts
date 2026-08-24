@@ -12,14 +12,22 @@ import {
   restoreAlertToInbox,
   saveAlertFeedback,
 } from "@/lib/alerts/service";
-import { requireMemberUser, requireUser } from "@/lib/auth/guards";
+import {
+  requireAdmin,
+  requireMemberUser,
+  requireUser,
+} from "@/lib/auth/guards";
 import { UserFacingError } from "@/lib/errors";
 import { runMarketScanner, scanUserWatchlist } from "@/lib/scanner/service";
 import {
   applyThresholdRecommendation,
   dismissThresholdRecommendation,
 } from "@/lib/recommendations/service";
-import { createTelegramLink, disconnectTelegram } from "@/lib/telegram/service";
+import {
+  createTelegramLink,
+  disconnectTelegram,
+  setTelegramDiagnosticsEnabled,
+} from "@/lib/telegram/service";
 import {
   createWatch,
   createWatches,
@@ -320,6 +328,23 @@ export async function disconnectTelegramAction() {
     },
     "Telegram disconnected",
     "Telegram could not be disconnected. Please retry.",
+  );
+}
+
+export async function saveTelegramDiagnosticsAction(formData: FormData) {
+  const user = await requireAdmin();
+  return actionResult(
+    async () => {
+      const enabled = formData.get("diagnosticsEnabled") === "on";
+      await setTelegramDiagnosticsEnabled(user.id, enabled);
+      revalidatePath("/settings");
+      return enabled;
+    },
+    (enabled) =>
+      enabled
+        ? "Scheduled scan diagnostics enabled"
+        : "Scheduled scan diagnostics disabled",
+    "Telegram diagnostics could not be updated. Please retry.",
   );
 }
 

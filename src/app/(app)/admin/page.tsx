@@ -24,6 +24,7 @@ import {
   guestAccessLinks,
   invitations,
   scanRuns,
+  telegramChannels,
   users,
   watches,
 } from "@/db/schema";
@@ -151,8 +152,17 @@ export default async function AdminPage({
     [runCount],
   ] = await Promise.all([
     getDb()
-      .select()
+      .select({
+        id: users.id,
+        email: users.email,
+        role: users.role,
+        watchQuota: users.watchQuota,
+        disabled: users.disabled,
+        telegramChatId: telegramChannels.chatId,
+        telegramDiagnosticsEnabled: telegramChannels.diagnosticsEnabled,
+      })
       .from(users)
+      .leftJoin(telegramChannels, eq(telegramChannels.userId, users.id))
       .where(eq(users.kind, "member"))
       .orderBy(users.email),
     getDb().select().from(invitations).orderBy(desc(invitations.createdAt)),
@@ -361,6 +371,25 @@ export default async function AdminPage({
                       containerClassName="text-xs text-slate-500"
                       className="checked:border-red-400 checked:bg-red-400"
                     />
+                    {user.telegramChatId ? (
+                      <Checkbox
+                        name="diagnosticsEnabled"
+                        label="Diag"
+                        aria-label={`Scheduled scan diagnostics for ${user.email}`}
+                        defaultChecked={
+                          user.telegramDiagnosticsEnabled ?? false
+                        }
+                        title="Send scheduled scan diagnostics to this user"
+                        containerClassName="text-xs text-slate-500"
+                      />
+                    ) : (
+                      <span
+                        className="text-xs text-slate-600"
+                        title="Telegram is not linked"
+                      >
+                        No TG
+                      </span>
+                    )}
                     <ActionSubmitButton
                       size="sm"
                       variant="outline"
