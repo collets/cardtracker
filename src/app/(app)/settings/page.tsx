@@ -7,7 +7,7 @@ import {
   saveTelegramDiagnosticsAction,
 } from "@/app/(app)/actions";
 import { getDb } from "@/db";
-import { telegramChannels, userPreferences, users } from "@/db/schema";
+import { telegramChannels, userPreferences } from "@/db/schema";
 import { PageHeading } from "@/components/page-heading";
 import { ActionForm, ActionSubmitButton } from "@/components/action-feedback";
 import { Badge } from "@/components/ui/badge";
@@ -31,13 +31,7 @@ import {
 
 export default async function AccountPage() {
   const sessionUser = await requireUser();
-  const [account, preferences, telegram] = await Promise.all([
-    getDb()
-      .select()
-      .from(users)
-      .where(eq(users.id, sessionUser.id))
-      .limit(1)
-      .then((rows) => rows[0]),
+  const [preferences, telegram] = await Promise.all([
     getDb()
       .select()
       .from(userPreferences)
@@ -59,7 +53,7 @@ export default async function AccountPage() {
         description={
           sessionUser.kind === "guest"
             ? "Guest demonstration access · 2-watch quota"
-            : `${account?.email ?? sessionUser.email} · ${account?.watchQuota ?? 50} watch quota`
+            : `${sessionUser.email} · ${sessionUser.watchQuota} watch quota`
         }
       />
       <div className="grid gap-6 lg:grid-cols-2">

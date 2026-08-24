@@ -165,74 +165,82 @@ function catalogOrder(sort: CatalogSort): SQL[] {
 }
 
 export async function searchCatalog(filters: CatalogFilters) {
-  const db = getDb();
-  const where = and(...catalogConditions(filters));
+  return getDb().transaction(async (db) => {
+    await db.execute(sql`set transaction read only`);
+    await db.execute(sql`
+      select
+        set_config('statement_timeout', '10s', true),
+        set_config('lock_timeout', '3s', true),
+        set_config('idle_in_transaction_session_timeout', '15s', true)
+    `);
+    const where = and(...catalogConditions(filters));
 
-  const [totalRows, expansionOptions, rarityOptions] = await Promise.all([
-    db
+    const totalRows = await db
       .select({ value: count() })
       .from(blueprints)
       .innerJoin(expansions, eq(expansions.id, blueprints.expansionId))
-      .where(where),
-    db
-      .select({
-        id: expansions.id,
-        code: expansions.code,
-        name: expansions.name,
-        count: count(),
-      })
-      .from(expansions)
-      .innerJoin(
-        blueprints,
-        and(
-          eq(blueprints.expansionId, expansions.id),
-          eq(blueprints.active, true),
-        ),
-      )
-      .where(eq(expansions.active, true))
-      .groupBy(expansions.id, expansions.code, expansions.name)
-      .orderBy(asc(expansions.name)),
-    db
-      .select({ value: blueprints.rarity, count: count() })
+      .where(where);
+    const [expansionOptions, rarityOptions] = await Promise.all([
+      db
+        .select({
+          id: expansions.id,
+          code: expansions.code,
+          name: expansions.name,
+          count: count(),
+        })
+        .from(expansions)
+        .innerJoin(
+          blueprints,
+          and(
+            eq(blueprints.expansionId, expansions.id),
+            eq(blueprints.active, true),
+          ),
+        )
+        .where(eq(expansions.active, true))
+        .groupBy(expansions.id, expansions.code, expansions.name)
+        .orderBy(asc(expansions.name)),
+      db
+        .select({ value: blueprints.rarity, count: count() })
+        .from(blueprints)
+        .innerJoin(expansions, eq(expansions.id, blueprints.expansionId))
+        .where(
+          and(
+            eq(blueprints.active, true),
+            eq(expansions.active, true),
+            isNotNull(blueprints.rarity),
+          ),
+        )
+        .groupBy(blueprints.rarity)
+        .orderBy(asc(blueprints.rarity)),
+    ]);
+
+    const total = totalRows[0]?.value ?? 0;
+    const totalPages = Math.max(1, Math.ceil(total / filters.perPage));
+    const page = Math.min(filters.page, totalPages);
+    const rows = await db
+      .select({ card: blueprints, expansion: expansions })
       .from(blueprints)
       .innerJoin(expansions, eq(expansions.id, blueprints.expansionId))
-      .where(
-        and(
-          eq(blueprints.active, true),
-          eq(expansions.active, true),
-          isNotNull(blueprints.rarity),
-        ),
-      )
-      .groupBy(blueprints.rarity)
-      .orderBy(asc(blueprints.rarity)),
-  ]);
+      .where(where)
+      .orderBy(...catalogOrder(filters.sort))
+      .limit(filters.perPage)
+      .offset((page - 1) * filters.perPage);
 
-  const total = totalRows[0]?.value ?? 0;
-  const totalPages = Math.max(1, Math.ceil(total / filters.perPage));
-  const page = Math.min(filters.page, totalPages);
-  const rows = await db
-    .select({ card: blueprints, expansion: expansions })
-    .from(blueprints)
-    .innerJoin(expansions, eq(expansions.id, blueprints.expansionId))
-    .where(where)
-    .orderBy(...catalogOrder(filters.sort))
-    .limit(filters.perPage)
-    .offset((page - 1) * filters.perPage);
-
-  return {
-    rows,
-    total,
-    totalPages,
-    page,
-    expansionOptions: expansionOptions satisfies CatalogExpansionOption[],
-    rarityOptions: rarityOptions
-      .filter(
-        (option): option is { value: string; count: number } =>
-          option.value !== null,
-      )
-      .map((option) => ({
-        value: option.value,
-        count: option.count,
-      })) satisfies CatalogRarityOption[],
-  };
+    return {
+      rows,
+      total,
+      totalPages,
+      page,
+      expansionOptions: expansionOptions satisfies CatalogExpansionOption[],
+      rarityOptions: rarityOptions
+        .filter(
+          (option): option is { value: string; count: number } =>
+            option.value !== null,
+        )
+        .map((option) => ({
+          value: option.value,
+          count: option.count,
+        })) satisfies CatalogRarityOption[],
+    };
+  });
 }

@@ -1,4 +1,4 @@
-import { and, count, countDistinct, desc, eq, gte, lt } from "drizzle-orm";
+import { and, eq, gte, lt } from "drizzle-orm";
 import Link from "next/link";
 import {
   Database,
@@ -16,21 +16,11 @@ import {
   synchronizeCatalogAction,
   updateUserAction,
 } from "@/app/(app)/admin/actions";
-import { getDb } from "@/db";
-import {
-  alertFeedback,
-  alerts,
-  blueprints,
-  guestAccessLinks,
-  invitations,
-  scanRuns,
-  telegramChannels,
-  users,
-  watches,
-} from "@/db/schema";
+import { scanRuns } from "@/db/schema";
 import { PageHeading } from "@/components/page-heading";
 import { AdminRunFilters } from "@/components/admin-run-filters";
 import { GuestAccessManager } from "@/components/guest-access-manager";
+import { ScrollToAnchor } from "@/components/scroll-to-anchor";
 import { ActionForm, ActionSubmitButton } from "@/components/action-feedback";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -44,12 +34,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { requireAdmin } from "@/lib/auth/guards";
+import { loadAdminOverview } from "@/lib/admin/overview";
 import {
   ALERT_FEEDBACK_OPTIONS,
   type AlertFeedbackOutcome,
 } from "@/lib/alerts/feedback-options";
-
-const RUNS_PER_PAGE = 20;
 
 type RunSearchParams = {
   page?: string;
@@ -139,74 +128,20 @@ export default async function AdminPage({
     runConditions.length > 0
       ? and(...(runConditions as NonNullable<(typeof runConditions)[number]>[]))
       : undefined;
-  const [
+  const {
     userRows,
     inviteRows,
-    runRows,
-    [catalogCount],
-    [watchCount],
-    [uniqueCount],
-    [alertCount],
+    runRows: visibleRunRows,
+    catalogCount,
+    watchCount,
+    uniqueCount,
+    alertCount,
     feedbackRows,
     guestLinkRows,
-    [runCount],
-  ] = await Promise.all([
-    getDb()
-      .select({
-        id: users.id,
-        email: users.email,
-        role: users.role,
-        watchQuota: users.watchQuota,
-        disabled: users.disabled,
-        telegramChatId: telegramChannels.chatId,
-        telegramDiagnosticsEnabled: telegramChannels.diagnosticsEnabled,
-      })
-      .from(users)
-      .leftJoin(telegramChannels, eq(telegramChannels.userId, users.id))
-      .where(eq(users.kind, "member"))
-      .orderBy(users.email),
-    getDb().select().from(invitations).orderBy(desc(invitations.createdAt)),
-    getDb()
-      .select()
-      .from(scanRuns)
-      .where(runWhere)
-      .orderBy(desc(scanRuns.startedAt))
-      .limit(RUNS_PER_PAGE)
-      .offset((runPage - 1) * RUNS_PER_PAGE),
-    getDb().select({ value: count() }).from(blueprints),
-    getDb()
-      .select({ value: count() })
-      .from(watches)
-      .where(eq(watches.active, true)),
-    getDb()
-      .select({ value: countDistinct(watches.blueprintId) })
-      .from(watches)
-      .where(eq(watches.active, true)),
-    getDb().select({ value: count() }).from(alerts),
-    getDb()
-      .select({ outcome: alertFeedback.outcome, value: count() })
-      .from(alertFeedback)
-      .groupBy(alertFeedback.outcome),
-    getDb()
-      .select()
-      .from(guestAccessLinks)
-      .orderBy(desc(guestAccessLinks.createdAt))
-      .limit(10),
-    getDb().select({ value: count() }).from(scanRuns).where(runWhere),
-  ]);
-  const runTotal = runCount?.value ?? 0;
-  const runPageCount = Math.max(1, Math.ceil(runTotal / RUNS_PER_PAGE));
-  const resolvedRunPage = Math.min(runPage, runPageCount);
-  const visibleRunRows =
-    resolvedRunPage === runPage
-      ? runRows
-      : await getDb()
-          .select()
-          .from(scanRuns)
-          .where(runWhere)
-          .orderBy(desc(scanRuns.startedAt))
-          .limit(RUNS_PER_PAGE)
-          .offset((resolvedRunPage - 1) * RUNS_PER_PAGE);
+    runTotal,
+    runPageCount,
+    resolvedRunPage,
+  } = await loadAdminOverview({ requestedPage: runPage, runWhere });
   const feedbackCounts = new Map<AlertFeedbackOutcome, number>(
     feedbackRows.map((row) => [row.outcome, row.value]),
   );
@@ -236,21 +171,9 @@ export default async function AdminPage({
         }
       />
       <div className="mb-6 grid grid-cols-3 gap-3">
-        <Stat
-          icon={Database}
-          label="Catalog"
-          value={catalogCount?.value ?? 0}
-        />
-        <Stat
-          icon={Play}
-          label="Active watches"
-          value={watchCount?.value ?? 0}
-        />
-        <Stat
-          icon={RefreshCw}
-          label="Unique blueprints"
-          value={uniqueCount?.value ?? 0}
-        />
+        <Stat icon={Database} label="Catalog" value={catalogCount} />
+        <Stat icon={Play} label="Active watches" value={watchCount} />
+        <Stat icon={RefreshCw} label="Unique blueprints" value={uniqueCount} />
       </div>
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <div className="grid gap-6 xl:h-[34rem] xl:grid-rows-2">
@@ -472,14 +395,14 @@ export default async function AdminPage({
           </CardContent>
         </Card>
       </div>
-      <Card className="mt-6" id="recent-runs">
+      <Card className="mt-6">
         <CardHeader>
           <div className="flex items-start justify-between gap-4">
             <div>
               <CardTitle>Alert feedback</CardTitle>
               <p className="mt-2 text-sm text-slate-400">
-                {feedbackTotal} of {alertCount?.value ?? 0} alerts rated. Each
-                alert contributes its latest answer.
+                {feedbackTotal} of {alertCount} alerts rated. Each alert
+                contributes its latest answer.
               </p>
             </div>
             <MessageCircleMore className="size-5 shrink-0 text-cyan-300" />
@@ -501,7 +424,8 @@ export default async function AdminPage({
           ))}
         </CardContent>
       </Card>
-      <Card className="mt-6">
+      <Card className="mt-6 scroll-mt-6" id="recent-runs">
+        <ScrollToAnchor id="recent-runs" />
         <CardHeader className="space-y-4">
           <div>
             <CardTitle>Recent runs</CardTitle>
@@ -569,6 +493,7 @@ export default async function AdminPage({
             <div className="flex gap-2">
               <Link
                 href={adminRunsHref(runFilters, resolvedRunPage - 1)}
+                prefetch={false}
                 scroll={false}
                 aria-disabled={resolvedRunPage === 1}
                 className="inline-flex h-8 items-center rounded-md border border-white/10 px-3 text-xs font-medium transition-colors hover:border-white/20 hover:bg-white/10 aria-disabled:pointer-events-none aria-disabled:opacity-40"
@@ -577,6 +502,7 @@ export default async function AdminPage({
               </Link>
               <Link
                 href={adminRunsHref(runFilters, resolvedRunPage + 1)}
+                prefetch={false}
                 scroll={false}
                 aria-disabled={resolvedRunPage === runPageCount}
                 className="inline-flex h-8 items-center rounded-md border border-white/10 px-3 text-xs font-medium transition-colors hover:border-white/20 hover:bg-white/10 aria-disabled:pointer-events-none aria-disabled:opacity-40"

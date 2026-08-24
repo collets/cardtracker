@@ -21,6 +21,7 @@ export async function AppNav({
     <aside className="flex border-b bg-slate-950/70 px-4 py-3 backdrop-blur lg:sticky lg:top-0 lg:h-dvh lg:w-64 lg:shrink-0 lg:flex-col lg:self-start lg:overflow-hidden lg:border-r lg:border-b-0 lg:p-5">
       <Link
         href="/dashboard"
+        prefetch={false}
         aria-label="Riftwatch home"
         className="mr-6 flex shrink-0 items-center gap-2 font-semibold lg:mr-0 lg:mb-8"
       >

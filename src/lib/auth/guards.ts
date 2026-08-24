@@ -1,32 +1,43 @@
 import "server-only";
-import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
+import { cache } from "react";
 import { auth } from "@/auth";
-import { getDb } from "@/db";
-import { guestAccessRedemptions, users } from "@/db/schema";
+import { getSql } from "@/db";
+import { observeCancellableDatabaseOperation } from "@/lib/db/observability";
 import { UserFacingError } from "@/lib/errors";
-import { isGuestSessionActive } from "@/lib/guests/session";
 
-export async function requireUser() {
+export const requireUser = cache(async function requireUser() {
   const session = await auth();
   if (!session?.user?.id) redirect("/sign-in");
-  const [record] = await getDb()
-    .select({
-      role: users.role,
-      kind: users.kind,
-      disabled: users.disabled,
-      watchQuota: users.watchQuota,
-      guestExpiresAt: guestAccessRedemptions.expiresAt,
-    })
-    .from(users)
-    .leftJoin(
-      guestAccessRedemptions,
-      eq(guestAccessRedemptions.userId, users.id),
-    )
-    .where(eq(users.id, session.user.id))
-    .limit(1);
+  const [record] = await observeCancellableDatabaseOperation(
+    "auth.require-user",
+    getSql()<
+      Array<{
+        role: "admin" | "user";
+        kind: "member" | "guest";
+        disabled: boolean;
+        watchQuota: number;
+        guestSessionActive: boolean | null;
+      }>
+    >`
+      select
+        app_user.role,
+        app_user.kind,
+        app_user.disabled,
+        app_user.watch_quota as "watchQuota",
+        (
+          app_user.kind <> 'guest'
+          or redemption.expires_at > now()
+        ) as "guestSessionActive"
+      from users app_user
+      left join guest_access_redemptions redemption
+        on redemption.user_id = app_user.id
+      where app_user.id = ${session.user.id}
+      limit 1
+    `,
+  );
   if (!record || record.disabled) redirect("/sign-in");
-  if (!isGuestSessionActive(record.kind, record.guestExpiresAt)) {
+  if (record.guestSessionActive !== true) {
     redirect("/guest?error=expired");
   }
   return {
@@ -35,9 +46,8 @@ export async function requireUser() {
     disabled: record.disabled,
     kind: record.kind,
     watchQuota: record.watchQuota,
-    guestExpiresAt: record.guestExpiresAt,
   };
-}
+});
 
 export async function requireMemberUser() {
   const user = await requireUser();

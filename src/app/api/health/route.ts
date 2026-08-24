@@ -1,11 +1,14 @@
-import { sql } from "drizzle-orm";
-import { getDb } from "@/db";
+import { getSql } from "@/db";
+import { observeCancellableDatabaseOperation } from "@/lib/db/observability";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    await getDb().execute(sql`select 1`);
+    await observeCancellableDatabaseOperation(
+      "health.database",
+      getSql()`select 1`,
+    );
     return Response.json(
       {
         status: "ok",

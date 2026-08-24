@@ -80,6 +80,10 @@ Work from the repository root and preserve unrelated developer changes.
   recommendation per member watch, none for guests, no automatic threshold
   mutation, no overwrite after a manual threshold edit, and cent precision for
   low-value cards.
+- Keep serverless runtime database traffic on the pooled `DATABASE_URL`, with
+  prepared statements disabled, a small per-instance pool, recycled idle
+  connections, request-deduplicated auth/read models, and bounded page query
+  concurrency. Database diagnostics must remain sanitized.
 
 ## Verify proportionally
 

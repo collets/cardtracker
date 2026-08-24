@@ -71,8 +71,8 @@ export default async function CardsPage({
 }) {
   const requestedFilters = parseCatalogFilters(await searchParams);
   const user = await requireUser();
-  const [result, preferences, watchedRows] = await Promise.all([
-    searchCatalog(requestedFilters),
+  const result = await searchCatalog(requestedFilters);
+  const [preferences, watchedRows] = await Promise.all([
     getDb()
       .select()
       .from(userPreferences)
@@ -172,6 +172,7 @@ export default async function CardsPage({
                 </p>
                 <Link
                   href="/cards"
+                  prefetch={false}
                   className={buttonVariants({
                     variant: "outline",
                     className: "mt-5",
@@ -207,7 +208,11 @@ export default async function CardsPage({
                       card={selectionCards.find((item) => item.id === card.id)!}
                       watched={watchedBlueprintIds.has(card.id)}
                     />
-                    <Link href={`/cards/${card.id}`} className="block h-full">
+                    <Link
+                      href={`/cards/${card.id}`}
+                      prefetch={false}
+                      className="block h-full"
+                    >
                       <CardArt
                         src={card.imageUrl}
                         alt={card.name}
@@ -354,6 +359,7 @@ function ActiveFilters({
         <Link
           key={pill.key}
           href={pill.href}
+          prefetch={false}
           className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1.5 text-xs text-cyan-100 transition-colors hover:border-cyan-300/40 hover:bg-cyan-300/15"
         >
           {pill.label} <X className="size-3" />
@@ -361,6 +367,7 @@ function ActiveFilters({
       ))}
       <Link
         href="/cards"
+        prefetch={false}
         className="px-2 py-1.5 text-xs text-slate-500 transition-colors hover:text-white"
       >
         Clear all
@@ -385,7 +392,10 @@ function CatalogPagination({
     >
       {filters.page > 1 ? (
         <Button asChild variant="outline">
-          <Link href={catalogHref(filters, { page: filters.page - 1 })}>
+          <Link
+            href={catalogHref(filters, { page: filters.page - 1 })}
+            prefetch={false}
+          >
             <ChevronLeft className="size-4" /> Previous
           </Link>
         </Button>
@@ -399,7 +409,10 @@ function CatalogPagination({
       </span>
       {filters.page < totalPages ? (
         <Button asChild variant="outline">
-          <Link href={catalogHref(filters, { page: filters.page + 1 })}>
+          <Link
+            href={catalogHref(filters, { page: filters.page + 1 })}
+            prefetch={false}
+          >
             Next <ChevronRight className="size-4" />
           </Link>
         </Button>

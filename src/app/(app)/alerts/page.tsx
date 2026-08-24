@@ -116,6 +116,7 @@ export default async function AlertsPage({
       >
         <Link
           href="/alerts"
+          prefetch={false}
           className={cn(
             "flex h-10 min-w-0 cursor-pointer items-center justify-center gap-1.5 rounded-lg px-2 text-xs font-medium transition-colors sm:min-w-28 sm:gap-2 sm:px-3 sm:text-sm",
             view === "inbox"
@@ -132,6 +133,7 @@ export default async function AlertsPage({
         </Link>
         <Link
           href="/alerts?view=recommendations"
+          prefetch={false}
           className={cn(
             "flex h-10 min-w-0 cursor-pointer items-center justify-center gap-1.5 rounded-lg px-2 text-xs font-medium transition-colors sm:min-w-28 sm:gap-2 sm:px-3 sm:text-sm",
             view === "recommendations"
@@ -152,6 +154,7 @@ export default async function AlertsPage({
         </Link>
         <Link
           href="/alerts?view=history"
+          prefetch={false}
           className={cn(
             "flex h-10 min-w-0 cursor-pointer items-center justify-center gap-1.5 rounded-lg px-2 text-xs font-medium transition-colors sm:min-w-28 sm:gap-2 sm:px-3 sm:text-sm",
             view === "history"
@@ -213,6 +216,7 @@ export default async function AlertsPage({
                       >
                         <Link
                           href={`/watches/${watch.id}?recommendation=${recommendation.id}`}
+                          prefetch={false}
                         >
                           Review <BellRing className="size-3.5" />
                         </Link>

@@ -61,6 +61,7 @@ function QuickFilter({
   return (
     <Link
       href={href}
+      prefetch={false}
       aria-pressed={active}
       className={cn(
         buttonVariants({ variant: "outline", size: "sm" }),
@@ -90,6 +91,7 @@ function CardDensityControl({ filters }: { filters: CatalogFilters }) {
       {previous ? (
         <Link
           href={catalogHref(filters, { columns: previous })}
+          prefetch={false}
           className={controlClass}
           aria-label="Show fewer cards per row"
           title="Show fewer cards per row"
@@ -110,6 +112,7 @@ function CardDensityControl({ filters }: { filters: CatalogFilters }) {
       {next ? (
         <Link
           href={catalogHref(filters, { columns: next })}
+          prefetch={false}
           className={controlClass}
           aria-label="Show more cards per row"
           title="Show more cards per row"
@@ -421,7 +424,11 @@ function CatalogFilterForm({
       </div>
 
       <div className="grid grid-cols-2 gap-2 border-t pt-5">
-        <Link href={resetHref} className={buttonVariants({ variant: "ghost" })}>
+        <Link
+          href={resetHref}
+          prefetch={false}
+          className={buttonVariants({ variant: "ghost" })}
+        >
           Reset
         </Link>
         <Button type="submit">Apply filters</Button>

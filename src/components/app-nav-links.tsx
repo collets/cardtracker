@@ -1,12 +1,13 @@
 "use client";
 
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Bell,
   Binoculars,
   CircleUserRound,
   LayoutDashboard,
+  LoaderCircle,
   Shield,
   type LucideIcon,
 } from "lucide-react";
@@ -19,6 +20,16 @@ type NavigationItem = {
   label: string;
   icon: LucideIcon;
 };
+
+function NavigationPendingIndicator() {
+  const { pending } = useLinkStatus();
+  return pending ? (
+    <LoaderCircle
+      className="ml-auto size-3.5 animate-spin text-cyan-200"
+      aria-hidden="true"
+    />
+  ) : null;
+}
 
 const primaryItems: NavigationItem[] = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
@@ -70,6 +81,7 @@ function NavigationLink({
     >
       <Link
         href={item.href}
+        prefetch={false}
         aria-label={item.label}
         aria-description={attentionLabel}
         title={attentionLabel}
@@ -77,6 +89,7 @@ function NavigationLink({
       >
         <Icon className="size-4" aria-hidden="true" />
         <span className="hidden sm:inline">{item.label}</span>
+        <NavigationPendingIndicator />
         {count ? (
           <span className="ml-auto min-w-5 rounded-full bg-cyan-300 px-1.5 py-0.5 text-center text-[10px] leading-4 font-semibold text-slate-950">
             {count > 99 ? "99+" : count}

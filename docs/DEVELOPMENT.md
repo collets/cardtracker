@@ -347,7 +347,19 @@ The Drizzle schema is in `src/db/schema.ts`; generated SQL and snapshots are in
 `pnpm db:migrate` prefers `DATABASE_URL_DIRECT` and falls back to
 `DATABASE_URL`. Runtime application queries always use `DATABASE_URL`. In a
 serverless deployment, use a transaction pooler for runtime traffic and a direct
-or session connection for the migration command.
+or session connection for the migration command. The runtime Postgres.js client
+disables prepared statements for transaction pooling, allows at most three
+connections per production function instance, closes connections after 20 idle
+seconds, rotates them after ten minutes, and gives connection setup ten seconds.
+These client limits protect the shared Supabase pool when Vercel runs several
+function instances concurrently.
+
+The Admin overview deliberately runs its database reads sequentially inside one
+short transaction instead of opening one connection per panel. That transaction
+uses a 10-second statement timeout, a 3-second lock timeout, and a 15-second
+idle-in-transaction timeout. Slow or failed auth, attention-count, and Admin
+operations emit only an operation label, duration, error class, and PostgreSQL
+code; query text, parameters, user data, and connection details are not logged.
 
 To run a reviewed migration from a checked-out branch against Preview or
 Production, export only that environment's direct/session migration URL in the
@@ -498,6 +510,17 @@ server-only token.
 Start the app, run `pnpm cron:catalog`, and inspect the latest catalog run on the
 admin page. CardTrader outages and schema changes are recorded as failed runs
 without exposing the bearer token.
+
+### Hosted page stalls or database timeouts
+
+Check the Vercel function log for `Slow database operation` or `Database
+operation failed`, then correlate its operation label and PostgreSQL code with
+Supabase Postgres and Supavisor logs. A normal authenticated navigation shows an
+immediate loading state and should either complete or display a retryable error;
+it must not wait for Vercel's function timeout. `57014` means PostgreSQL cancelled
+a statement at the configured timeout. A connection-limit incident instead
+reports an explicit remaining-slots or pool-client error. Do not place raw SQL,
+parameters, database URLs, Telegram chat IDs, or authorization data in logs.
 
 ### Browser test cannot launch
 
