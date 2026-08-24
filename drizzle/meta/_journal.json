@@ -43,6 +43,13 @@
       "when": 1786634964885,
       "tag": "0005_small_captain_universe",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1787592962671,
+      "tag": "0006_rich_stingray",
+      "breakpoints": true
     }
   ]
 }

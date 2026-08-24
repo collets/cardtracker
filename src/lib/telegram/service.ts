@@ -21,6 +21,7 @@ import {
   telegramChannels,
   telegramLinkTokens,
   thresholdRecommendations,
+  users,
   watches,
 } from "@/db/schema";
 import { buildAppUrl } from "@/lib/app-url";
@@ -62,6 +63,21 @@ export async function disconnectTelegram(userId: string) {
   await getDb()
     .delete(telegramChannels)
     .where(eq(telegramChannels.userId, userId));
+}
+
+export async function setTelegramDiagnosticsEnabled(
+  userId: string,
+  enabled: boolean,
+) {
+  const [updated] = await getDb()
+    .update(telegramChannels)
+    .set({ diagnosticsEnabled: enabled })
+    .where(eq(telegramChannels.userId, userId))
+    .returning({ diagnosticsEnabled: telegramChannels.diagnosticsEnabled });
+  if (!updated) {
+    throw new Error("Telegram must be connected before enabling diagnostics");
+  }
+  return updated.diagnosticsEnabled;
 }
 
 export async function handleTelegramUpdate(
@@ -200,6 +216,51 @@ async function sendTelegramMessage(
   );
   if (!response.ok)
     throw new Error(`Telegram delivery failed with HTTP ${response.status}`);
+}
+
+export async function dispatchScheduledScanDiagnostics(
+  summary: {
+    claimed: number;
+    successes: number;
+    failures: number;
+    watches: number;
+    alerts: number;
+    notifications: { sent: number; failed: number };
+  },
+  fetchImpl: typeof fetch = fetch,
+) {
+  const env = getServerEnv();
+  if (!env.TELEGRAM_BOT_TOKEN) return { sent: 0, failed: 0 };
+
+  const channels = await getDb()
+    .select({ chatId: telegramChannels.chatId })
+    .from(telegramChannels)
+    .innerJoin(users, eq(users.id, telegramChannels.userId))
+    .where(
+      and(
+        eq(users.kind, "member"),
+        eq(users.disabled, false),
+        eq(telegramChannels.enabled, true),
+        eq(telegramChannels.diagnosticsEnabled, true),
+      ),
+    );
+  const text = [
+    "Riftwatch diagnostic · scheduled scan completed",
+    `Claimed ${summary.claimed} · succeeded ${summary.successes} · failed ${summary.failures} · alerts ${summary.alerts}`,
+    `Watches ${summary.watches} · notifications ${summary.notifications.sent} sent / ${summary.notifications.failed} failed`,
+  ].join("\n");
+
+  let sent = 0;
+  let failed = 0;
+  for (const channel of channels) {
+    try {
+      await sendTelegramMessage(channel.chatId, text, fetchImpl);
+      sent += 1;
+    } catch {
+      failed += 1;
+    }
+  }
+  return { sent, failed };
 }
 
 export async function dispatchPendingNotifications(

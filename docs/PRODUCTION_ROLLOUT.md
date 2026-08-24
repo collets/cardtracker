@@ -363,6 +363,9 @@ CardTrader request when no blueprint is due.
 - [ ] Observe the first hour, first day, and first seven days: scan requests,
       stale blueprints, partial/failed runs, notification failures, CardTrader
       errors, function duration, database connections, and Cloudflare usage.
+- [ ] During the first-hour observation, optionally enable `Diag` in Admin →
+      Users for one Telegram-linked test member, confirm a compact heartbeat on
+      zero-work as well as productive completed scans, then disable it.
 - [ ] Set `SCHEDULER_ENABLED=false` immediately for scheduler trouble. Retain
       the daily Vercel fallback and record the incident.
 

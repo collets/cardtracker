@@ -37,5 +37,11 @@ use `pnpm ops:status -- --allow-hosted` for an aggregate report of stale scans,
 failed runs, active unique blueprints, and notification failures. Capacity
 defaults to 250 unique active blueprints.
 
+For short scheduler observation windows, an administrator can enable a compact
+Telegram completion heartbeat for their own linked account or any linked member
+from the Users panel. It is off by default, is emitted only after protected cron
+scans complete, and should be disabled after testing because the five-minute
+clock makes it intentionally noisy.
+
 The daily-to-five-minute promotion, hosted smoke sequence, and rollback gates are
 defined in `docs/PRODUCTION_ROLLOUT.md`.

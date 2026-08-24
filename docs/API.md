@@ -85,13 +85,24 @@ successful, and failed blueprint work plus logical CardTrader fetch counts:
   "failures": 0,
   "watches": 18,
   "alerts": 1,
-  "marketplaceFetches": { "expansions": 2, "blueprints": 2 }
+  "marketplaceFetches": { "expansions": 2, "blueprints": 2 },
+  "notifications": { "sent": 1, "failed": 0 },
+  "diagnostics": { "sent": 2, "failed": 0 }
 }
 ```
 
 The fetch counts represent client operations, not internal HTTP retries.
 Operational details, including the same fetch breakdown, are stored in
-`scan_runs.details`.
+`scan_runs.details`. `notifications` reports persisted alert and recommendation
+deliveries attempted by the run. `diagnostics` reports the compact completion
+heartbeats sent to active, Telegram-linked members whose diagnostic toggle is
+enabled by an administrator.
+
+Diagnostic heartbeats are sent only by the protected cron scan route, including
+when it claims no work or creates no alert. Manual user and administrator scans
+remain quiet. A heartbeat represents each completed cron invocation and is not
+inserted into `notification_deliveries`; repeated cron invocations can therefore
+produce repeated heartbeats by design.
 
 Vercel calls these same GET routes according to `vercel.json`. The market route
 is daily on Hobby. The optional Cloudflare scheduler calls this same protected
@@ -122,7 +133,8 @@ Authenticated UI mutations use server actions rather than public REST routes.
 Actions recheck the database user and role, validate form data, and scope
 user-owned objects by `userId`. Important actions include watch creation/update,
 manual watch scans, preference changes, Telegram linking, invitations, user
-administration, alert feedback, catalog synchronization, and scanner execution.
+administration, per-user Telegram diagnostics, alert feedback, catalog
+synchronization, and scanner execution.
 Guest users can use the normal watch and alert actions within their quota, but
 manual-scan and Telegram actions enforce a member-only check at the server
 boundary as well as hiding their controls in the UI.

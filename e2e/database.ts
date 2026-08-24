@@ -7,6 +7,7 @@ import {
   expansions,
   invitations,
   scanRuns,
+  telegramChannels,
   thresholdRecommendations,
   userPreferences,
   users,
@@ -141,6 +142,16 @@ export async function seedE2eFixtures() {
         conditions: ["Mint", "Near Mint"],
       })),
     );
+    await db.insert(telegramChannels).values([
+      {
+        userId: e2eUserIds[0],
+        chatId: "e2e-admin-diagnostics",
+      },
+      {
+        userId: e2eUserIds[1],
+        chatId: "e2e-user-diagnostics",
+      },
+    ]);
     await db.insert(invitations).values([
       {
         id: e2eInvitationIds[0],

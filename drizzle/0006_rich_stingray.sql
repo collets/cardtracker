@@ -1,0 +1,1 @@
+ALTER TABLE "telegram_channels" ADD COLUMN "diagnostics_enabled" boolean DEFAULT false NOT NULL;

@@ -324,6 +324,14 @@ pnpm telegram:webhook:status
 Do not commit tunnel URLs or bot credentials. Linking tokens are hashed, expire
 after ten minutes, and can be used once.
 
+Administrators can opt their own linked account into scheduled scan diagnostics
+from Account, or opt any linked member in or out with the `Diag` toggle in
+Admin → Users. The default is off. An opted-in active account receives one
+compact Telegram completion heartbeat from `/api/cron/scan`, even when the scan
+claims no work or creates no alert. Manual scans do not send the heartbeat. At
+the Cloudflare five-minute cadence this is intentionally noisy, so disable it
+after the observation window.
+
 ## Database development
 
 The Drizzle schema is in `src/db/schema.ts`; generated SQL and snapshots are in

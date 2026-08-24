@@ -3,7 +3,7 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/db";
-import { invitations, users } from "@/db/schema";
+import { invitations, telegramChannels, users } from "@/db/schema";
 import { actionResult } from "@/lib/actions/server";
 import { requireAdmin } from "@/lib/auth/guards";
 import { synchronizeCatalog } from "@/lib/catalog/service";
@@ -25,6 +25,7 @@ const userUpdateSchema = z.object({
   userId: z.uuid(),
   quota: z.coerce.number().int().min(1).max(500),
   disabled: z.boolean(),
+  diagnosticsEnabled: z.boolean(),
   role: z.enum(["admin", "user"]),
 });
 
@@ -127,6 +128,7 @@ export async function updateUserAction(formData: FormData) {
         userId: formData.get("userId"),
         quota: formData.get("quota"),
         disabled: formData.get("disabled") === "on",
+        diagnosticsEnabled: formData.get("diagnosticsEnabled") === "on",
         role: formData.get("role") === "admin" ? "admin" : "user",
       });
       if (update.userId === admin.id && update.disabled) {
@@ -134,18 +136,25 @@ export async function updateUserAction(formData: FormData) {
           "You cannot disable your own administrator account",
         );
       }
-      const [updated] = await getDb()
-        .update(users)
-        .set({
-          watchQuota: update.quota,
-          disabled: update.disabled,
-          role: update.role,
-          updatedAt: new Date(),
-        })
-        .where(eq(users.id, update.userId))
-        .returning({ id: users.id });
-      if (!updated) throw new UserFacingError("User not found");
+      await getDb().transaction(async (tx) => {
+        const [updated] = await tx
+          .update(users)
+          .set({
+            watchQuota: update.quota,
+            disabled: update.disabled,
+            role: update.role,
+            updatedAt: new Date(),
+          })
+          .where(and(eq(users.id, update.userId), eq(users.kind, "member")))
+          .returning({ id: users.id });
+        if (!updated) throw new UserFacingError("User not found");
+        await tx
+          .update(telegramChannels)
+          .set({ diagnosticsEnabled: update.diagnosticsEnabled })
+          .where(eq(telegramChannels.userId, update.userId));
+      });
       revalidatePath("/admin");
+      if (update.userId === admin.id) revalidatePath("/settings");
     },
     "User settings saved",
     "The user settings could not be saved. Please retry.",
