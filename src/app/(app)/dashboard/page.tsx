@@ -63,7 +63,7 @@ export default async function DashboardPage() {
               </ActionForm>
             ) : null}
             <Button asChild>
-              <Link href="/cards">
+              <Link href="/cards" prefetch={false}>
                 <Plus className="size-4" /> Track a card
               </Link>
             </Button>
@@ -121,7 +121,9 @@ export default async function DashboardPage() {
               marketplace filters you care about.
             </p>
             <Button asChild className="mt-5">
-              <Link href="/cards">Discover cards</Link>
+              <Link href="/cards" prefetch={false}>
+                Discover cards
+              </Link>
             </Button>
           </CardContent>
         </Card>
@@ -178,7 +180,9 @@ export default async function DashboardPage() {
                   </div>
                   <div className="mt-5 flex flex-wrap gap-2">
                     <Button asChild size="sm" variant="outline">
-                      <Link href={`/watches/${watch.id}`}>Details</Link>
+                      <Link href={`/watches/${watch.id}`} prefetch={false}>
+                        Details
+                      </Link>
                     </Button>
                     {user.kind !== "guest" ? (
                       <ActionForm action={scanWatchAction}>
@@ -258,6 +262,7 @@ function AttentionLink({
   return (
     <Link
       href={href}
+      prefetch={false}
       className={cn(
         "group flex min-h-12 cursor-pointer items-center gap-3 rounded-xl border px-3 py-2.5 transition-colors",
         tone === "deal"

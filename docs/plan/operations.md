@@ -6,6 +6,13 @@
 - Preview: Vercel with isolated configuration and no production cron delivery.
 - Production: Vercel in `fra1` and an EU Supabase project.
 
+Runtime database traffic uses Supavisor transaction pooling. Each Vercel
+function instance holds at most three short-lived client connections, and
+authenticated request data is deduplicated within a render. Database-heavy
+navigation does not prefetch full user pages; it displays an interruptible
+loading state. The Admin overview uses one bounded read transaction so a single
+operator cannot consume an entire function-local pool.
+
 `AUTH_ENABLE_DEV_PROVIDER=true` is forbidden when `NODE_ENV=production`.
 
 ## Scheduling

@@ -103,6 +103,7 @@ export default async function CardPage({
                   </Button>
                   <Link
                     href={`/watches/${existingWatch.id}`}
+                    prefetch={false}
                     className={buttonVariants({ variant: "outline" })}
                   >
                     Review watch

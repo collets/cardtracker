@@ -64,6 +64,8 @@ reports, or the raw CardTrader Postman collection.
 - `src/lib/scanner`: leases, batch execution, observations, and alert lifecycle.
 - `src/lib/recommendations`: pure threshold suggestions and authorized,
   optimistic recommendation resolution.
+- `src/lib/admin`: bounded, administrator-only operational read models.
+- `src/lib/db`: sanitized database timing and failure diagnostics.
 - `src/lib/telegram`: linking, webhook processing, and delivery.
 - `src/lib/watches`: watch validation and authorized persistence.
 - `scripts`: deterministic local development orchestration.
@@ -71,6 +73,12 @@ reports, or the raw CardTrader Postman collection.
 Prefer pure functions for pricing rules. Keep external payload parsing in the
 integration layer and database transactions in services. Client components must
 not import server-only modules.
+
+For server-rendered data, deduplicate repeated authorization/read-model calls
+within the React render pass. Keep production connection pools small because
+each serverless instance owns its own pool. Avoid wide `Promise.all` query
+fan-out on pages; use a bounded transaction or a consolidated query, and provide
+route loading and retry states for hosted dependencies.
 
 Threshold recommendations must reuse scanner evidence rather than add a
 CardTrader call. Preserve one recommendation per member watch, guest exclusion,
